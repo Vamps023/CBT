@@ -13,8 +13,8 @@ interface TrainProps {
 
 const Train: React.FC<TrainProps> = ({ position, isMoving, speed, brakeApplied }) => {
   const meshRef = useRef<THREE.Group>(null!)
-  const { nodes: trainNodes, materials: trainMaterials } = useGLTF('/src/assets/wooden_train_toy.glb')
-  const { nodes: carriageNodes, materials: carriageMaterials } = useGLTF('/src/assets/train_carriage.glb')
+  const { nodes: trainNodes, materials: trainMaterials } = useGLTF('/models/wooden_train_toy.glb')
+  const { nodes: carriageNodes, materials: carriageMaterials } = useGLTF('/models/train_carriage.glb')
   
   useFrame((state, delta) => {
     if (meshRef.current && isMoving && !brakeApplied) {
