@@ -13,8 +13,8 @@ interface TrainProps {
 
 const Train: React.FC<TrainProps> = ({ position, isMoving, speed, brakeApplied }) => {
   const meshRef = useRef<THREE.Group>(null!)
-  const { nodes: trainNodes, materials: trainMaterials } = useGLTF('/models/wooden_train_toy.glb')
-  const { nodes: carriageNodes, materials: carriageMaterials } = useGLTF('/models/train_carriage.glb')
+const { nodes: trainNodes, materials: trainMaterials } = useGLTF('https://xbbqodtwupcdznhhvedq.supabase.co/storage/v1/object/sign/asset/wooden_train_toy.glb?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9mMThhNWJjZS0zOTcxLTQxMzQtYTNiNC05NDVmNjUzNjM3NTQiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJhc3NldC93b29kZW5fdHJhaW5fdG95LmdsYiIsImlhdCI6MTc1NDAyNzE1MiwiZXhwIjoxNzU2NjE5MTUyfQ.av39aJgUE6EknCvAyYGov75MZpeydX8vCyox-0ctBHQ')
+  const { nodes: carriageNodes, materials: carriageMaterials } = useGLTF('https://xbbqodtwupcdznhhvedq.supabase.co/storage/v1/object/sign/asset/train_carriage.glb?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9mMThhNWJjZS0zOTcxLTQxMzQtYTNiNC05NDVmNjUzNjM3NTQiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJhc3NldC90cmFpbl9jYXJyaWFnZS5nbGIiLCJpYXQiOjE3NTQwMjcxNDAsImV4cCI6MTc1NjYxOTE0MH0.yazo95UdFRyaYInccOc2-cZ53FV4JqYHPEzFQ5HRO3s')
   
   useFrame((state, delta) => {
     if (meshRef.current && isMoving && !brakeApplied) {
