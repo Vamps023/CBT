@@ -31,7 +31,7 @@ interface CourseTableProps {
   onEditCourse: (course: Course) => void
   onDeleteCourse: (courseId: string) => void
   onViewCourse: (courseId: string) => void
-  onAssignCourse?: (courseId: string) => void
+  onTogglePublish?: (courseId: string, nextPublished: boolean) => void
   loading?: boolean
 }
 
@@ -43,7 +43,7 @@ const CourseTable: React.FC<CourseTableProps> = ({
   onEditCourse,
   onDeleteCourse,
   onViewCourse,
-  onAssignCourse,
+  onTogglePublish,
   loading = false
 }) => {
   const [dropdownOpen, setDropdownOpen] = useState<string | null>(null)
@@ -122,8 +122,11 @@ const CourseTable: React.FC<CourseTableProps> = ({
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Created
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Actions
+              </th>
+              <th scope="col" className="relative px-6 py-3">
+                <span className="sr-only">Edit</span>
               </th>
             </tr>
           </thead>
@@ -168,68 +171,44 @@ const CourseTable: React.FC<CourseTableProps> = ({
                   {course.difficulty_level}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  {getPublishedBadge(course.is_published)}
+                  {onTogglePublish ? (
+                    <button
+                      onClick={() => onTogglePublish(course.id, !course.is_published)}
+                      className="focus:outline-none"
+                      title={course.is_published ? 'Unpublish' : 'Publish'}
+                    >
+                      {getPublishedBadge(course.is_published)}
+                    </button>
+                  ) : (
+                    getPublishedBadge(course.is_published)
+                  )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {formatDate(course.created_at)}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <div className="relative">
-                    <button
-                      onClick={() => setDropdownOpen(dropdownOpen === course.id ? null : course.id)}
-                      className="text-gray-400 hover:text-gray-600 p-1"
+                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <div className="flex items-center justify-end space-x-3">
+                                        <button
+                        onClick={() => onViewCourse(course.id)}
+                        className="text-gray-400 hover:text-gray-600 p-1"
+                        title="View Details"
                     >
-                      <MoreHorizontal className="h-5 w-5" />
+                        <Eye className="h-5 w-5" />
                     </button>
-                    
-                    {dropdownOpen === course.id && (
-                      <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
-                        <div className="py-1">
-                          <button
-                            onClick={() => {
-                              onViewCourse(course.id)
-                              setDropdownOpen(null)
-                            }}
-                            className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                          >
-                            <Eye className="h-4 w-4 mr-2" />
-                            View Details
-                          </button>
-                          <button
-                            onClick={() => {
-                              onEditCourse(course)
-                              setDropdownOpen(null)
-                            }}
-                            className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                          >
-                            <Edit className="h-4 w-4 mr-2" />
-                            Edit Course
-                          </button>
-                          {onAssignCourse && (
-                            <button
-                              onClick={() => {
-                                onAssignCourse(course.id)
-                                setDropdownOpen(null)
-                              }}
-                              className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                            >
-                              <BookOpen className="h-4 w-4 mr-2" />
-                              Assign to Student
-                            </button>
-                          )}
-                          <button
-                            onClick={() => {
-                              onDeleteCourse(course.id)
-                              setDropdownOpen(null)
-                            }}
-                            className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete Course
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                    <button
+                        onClick={() => onEditCourse(course)}
+                        className="text-blue-500 hover:text-blue-700 p-1"
+                        title="Edit Course"
+                    >
+                        <Edit className="h-5 w-5" />
+                    </button>
+                    <button
+                        onClick={() => onDeleteCourse(course.id)}
+                        className="text-red-500 hover:text-red-700 p-1"
+                        title="Delete Course"
+                    >
+                        <Trash2 className="h-5 w-5" />
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -325,7 +304,17 @@ const CourseTable: React.FC<CourseTableProps> = ({
                     <span>{course.duration_hours}h</span>
                     <span className="capitalize">{course.difficulty_level}</span>
                   </div>
-                  {getPublishedBadge(course.is_published)}
+                  {onTogglePublish ? (
+                    <button
+                      onClick={() => onTogglePublish(course.id, !course.is_published)}
+                      className="focus:outline-none"
+                      title={course.is_published ? 'Unpublish' : 'Publish'}
+                    >
+                      {getPublishedBadge(course.is_published)}
+                    </button>
+                  ) : (
+                    getPublishedBadge(course.is_published)
+                  )}
                 </div>
                 
                 <div className="flex items-center mt-2 text-xs text-gray-500">

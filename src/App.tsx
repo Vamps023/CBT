@@ -17,6 +17,7 @@ import AdminDashboard from './pages/admin/AdminDashboard'
 import AdminAssessments from './pages/admin/AdminAssessments.tsx';
 import AdminEnrollments from './pages/admin/AdminEnrollments.tsx';
 import AdminCourseContent from './pages/admin/AdminCourseContent.tsx';
+import AdminCourses from './pages/admin/AdminCourses.tsx';
 
 function App() {
   return (
@@ -74,6 +75,7 @@ function App() {
                 </AdminProtectedRoute>
               }>
                 <Route index element={<AdminDashboard />} />
+                <Route path="courses" element={<AdminCourses />} />
                 <Route path="enrollments" element={<AdminEnrollments />} />
                 <Route path="course-content" element={<AdminCourseContent />} />
                 <Route path="assessments" element={<AdminAssessments />} />

@@ -19,9 +19,6 @@ const AdminCourseContent: React.FC = () => {
   // Draft state
   const [newModuleTitle, setNewModuleTitle] = useState('')
   const [newLesson, setNewLesson] = useState<{ title: string; type: 'video' | 'assessment'; duration: string; videoUrl?: string }>({ title: '', type: 'video', duration: '', videoUrl: '' })
-  const [newCourseTitle, setNewCourseTitle] = useState('')
-  const [newCourseDesc, setNewCourseDesc] = useState('')
-  const [creatingCourse, setCreatingCourse] = useState(false)
   const [addingModule, setAddingModule] = useState(false)
   const [addingLesson, setAddingLesson] = useState(false)
 
@@ -148,187 +145,136 @@ const AdminCourseContent: React.FC = () => {
     }
   }
 
-  const handleCreateCourse = async () => {
-    const title = newCourseTitle.trim()
-    if (!user || !title) {
-      toast.error('Enter course title')
-      return
-    }
-    try {
-      setCreatingCourse(true)
-      const { data, error } = await supabase
-        .from('courses')
-        .insert({ title, description: newCourseDesc || null, instructor_id: user.id })
-        .select('id, title')
-        .single()
-      if (error) throw error
-      const created = data as Course
-      setCourses([...(courses || []), created])
-      setSelectedCourseId(created.id)
-      setNewCourseTitle('')
-      setNewCourseDesc('')
-      toast.success('Course created')
-    } catch (e: any) {
-      console.error(e)
-      toast.error(e?.message || 'Failed to create course')
-    } finally {
-      setCreatingCourse(false)
-    }
-  }
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-semibold mb-6">Course Content Management</h1>
+            <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-bold text-gray-900">Course Content</h1>
+      </div>
+      <p className="text-gray-600 mb-6">Create, organize, and manage course structures, modules, and lessons.</p>
 
-      {/* Create & Select Course */}
-      <div className="grid md:grid-cols-2 gap-6 mb-6">
-        <div>
-          <label className="block text-sm text-gray-600 mb-1">Create Course</label>
-          <div className="space-y-2">
-            <input
-              className="border px-3 py-2 rounded w-full"
-              placeholder="Course title"
-              value={newCourseTitle}
-              onChange={(e) => setNewCourseTitle(e.target.value)}
-            />
-            <input
-              className="border px-3 py-2 rounded w-full"
-              placeholder="Short description (optional)"
-              value={newCourseDesc}
-              onChange={(e) => setNewCourseDesc(e.target.value)}
-            />
-            <button
-              onClick={handleCreateCourse}
-              disabled={creatingCourse}
-              className={`px-4 py-2 rounded text-white ${creatingCourse ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}
-            >
-              {creatingCourse ? 'Creating...' : 'Create Course'}
-            </button>
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm text-gray-600 mb-1">Course</label>
-          <select
-            className="border px-3 py-2 rounded w-full"
-            value={selectedCourseId}
-            onChange={(e) => setSelectedCourseId(e.target.value)}
-          >
-            <option value="">Select a course</option>
-            {courses.map(c => (
-              <option key={c.id} value={c.id}>{c.title}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Add Module */}
-        {selectedCourseId && (
+      {/* Course Selection & Creation */}
+      <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
+        <div className="max-w-md">
+          {/* Course Selection */}
           <div>
-            <label className="block text-sm text-gray-600 mb-1">Add Module</label>
-            <div className="flex">
-              <input
-                className="border px-3 py-2 rounded-l w-full"
-                placeholder="Module title"
-                value={newModuleTitle}
-                onChange={(e) => setNewModuleTitle(e.target.value)}
-              />
-              <button onClick={handleAddModule} disabled={addingModule} className={`px-4 py-2 text-white rounded-r ${addingModule ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'}`}>
-                {addingModule ? 'Adding...' : 'Add'}
-              </button>
-            </div>
+            <label htmlFor="course-select" className="block text-sm font-medium text-gray-700 mb-1">Select a Course</label>
+            <select
+              id="course-select"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              value={selectedCourseId}
+              onChange={(e) => setSelectedCourseId(e.target.value)}
+            >
+              <option value="">Select a course to manage...</option>
+              {courses.map(c => (
+                <option key={c.id} value={c.id}>{c.title}</option>
+              ))}
+            </select>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Modules list */}
+      {/* Content Management Section */}
       {selectedCourseId && (
-        <div className="mb-6">
-          <h2 className="text-lg font-semibold mb-2">Modules</h2>
-          <div className="flex flex-wrap gap-2">
-            {modules.map(m => (
-              <button
-                key={m.id}
-                onClick={() => setSelectedModuleId(m.id)}
-                className={`px-3 py-1 rounded border ${selectedModuleId === m.id ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700'}`}
-              >
-                {m.title}
-              </button>
-            ))}
-            {modules.length === 0 && <div className="text-sm text-gray-500">No modules yet.</div>}
-          </div>
-        </div>
-      )}
-
-      {/* Lessons + Add Lesson */}
-      {selectedModuleId && (
         <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
-            <h3 className="font-semibold mb-2">Lessons</h3>
-            <div className="space-y-2">
-              {lessons.map(l => (
-                <div key={l.id} className="border rounded p-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="font-medium">{l.title} <span className="text-xs text-gray-500">({l.type})</span></div>
-                      {l.type === 'video' && l.video_url && (
-                        <div className="text-xs text-gray-500 break-all">{l.video_url}</div>
-                      )}
-                    </div>
-                    <div className="text-xs text-gray-500">Order: {l.order}</div>
-                  </div>
-                </div>
-              ))}
-              {lessons.length === 0 && <div className="text-sm text-gray-500">No lessons yet.</div>}
+          {/* Modules Column */}
+          <div className="lg:col-span-1 flex flex-col gap-6">
+            {/* Add Module Card */}
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
+              <h3 className="text-lg font-medium text-gray-900 mb-3">Add Module</h3>
+              <div className="flex items-center space-x-2">
+                <input
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="New module title..."
+                  value={newModuleTitle}
+                  onChange={(e) => setNewModuleTitle(e.target.value)}
+                />
+                <button onClick={handleAddModule} disabled={addingModule || !newModuleTitle.trim()} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex-shrink-0">
+                  {addingModule ? '...' : 'Add'}
+                </button>
+              </div>
+            </div>
+            {/* Modules List Card */}
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
+              <h3 className="text-lg font-medium text-gray-900 mb-3">Modules</h3>
+              <div className="space-y-2">
+                {modules.map(m => (
+                  <button
+                    key={m.id}
+                    onClick={() => setSelectedModuleId(m.id)}
+                    className={`w-full text-left px-3 py-2 rounded-md border text-sm transition-colors ${selectedModuleId === m.id ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-800 hover:bg-gray-50 border-gray-300'}`}
+                  >
+                    {m.title}
+                  </button>
+                ))}
+                {modules.length === 0 && <div className="text-sm text-gray-500 py-2">No modules yet.</div>}
+              </div>
             </div>
           </div>
 
-          <div>
-            <h3 className="font-semibold mb-2">Add Lesson</h3>
-            <div className="space-y-3 border rounded p-3">
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Title</label>
-                <input
-                  className="border px-3 py-2 rounded w-full"
-                  value={newLesson.title}
-                  onChange={(e) => setNewLesson({ ...newLesson, title: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Type</label>
-                <select
-                  className="border px-3 py-2 rounded w-full"
-                  value={newLesson.type}
-                  onChange={(e) => setNewLesson({ ...newLesson, type: e.target.value as any })}
-                >
-                  <option value="video">Video</option>
-                  <option value="assessment">Assessment</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Duration (minutes)</label>
-                <input
-                  type="number"
-                  className="border px-3 py-2 rounded w-full"
-                  value={newLesson.duration}
-                  onChange={(e) => setNewLesson({ ...newLesson, duration: e.target.value })}
-                />
-              </div>
-              {newLesson.type === 'video' && (
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Video URL or Storage Path</label>
-                  <input
-                    className="border px-3 py-2 rounded w-full"
-                    placeholder="https://... or videos/filename.mp4"
-                    value={newLesson.videoUrl}
-                    onChange={(e) => setNewLesson({ ...newLesson, videoUrl: e.target.value })}
-                  />
+          {/* Lessons Column */}
+          {selectedModuleId && (
+            <div className="lg:col-span-2 flex flex-col gap-6">
+              {/* Lessons List Card */}
+              <div className="bg-white p-4 rounded-lg border border-gray-200">
+                <h3 className="text-lg font-medium text-gray-900 mb-3">Lessons</h3>
+                <div className="space-y-2">
+                  {lessons.map(l => (
+                    <div key={l.id} className="border rounded-lg p-3 bg-gray-50">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-medium text-gray-800">{l.title} <span className="text-xs font-normal text-gray-500">({l.type})</span></div>
+                          {l.type === 'video' && l.video_url && (
+                            <div className="text-xs text-gray-500 break-all">{l.video_url}</div>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-500">Order: {l.order}</div>
+                      </div>
+                    </div>
+                  ))}
+                  {lessons.length === 0 && <div className="text-sm text-gray-500 py-2">No lessons in this module.</div>}
                 </div>
-              )}
-              <button onClick={handleAddLesson} disabled={addingLesson} className={`w-full px-4 py-2 text-white rounded ${addingLesson ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'}`}>
-                {addingLesson ? 'Adding...' : 'Add Lesson'}
-              </button>
-              <p className="text-xs text-gray-500">Assessment lessons automatically get a blank assessment created.</p>
+              </div>
+              {/* Add Lesson Card */}
+              <div className="bg-white p-4 rounded-lg border border-gray-200">
+                <h3 className="text-lg font-medium text-gray-900 mb-3">Add Lesson</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <input
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 md:col-span-2"
+                    placeholder="Lesson title..."
+                    value={newLesson.title}
+                    onChange={(e) => setNewLesson({ ...newLesson, title: e.target.value })}
+                  />
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    value={newLesson.type}
+                    onChange={(e) => setNewLesson({ ...newLesson, type: e.target.value as any, videoUrl: '' })}
+                  >
+                    <option value="video">Video</option>
+                    <option value="assessment">Assessment</option>
+                  </select>
+                  <input
+                    type="number"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Duration (minutes)"
+                    value={newLesson.duration}
+                    onChange={(e) => setNewLesson({ ...newLesson, duration: e.target.value })}
+                  />
+                  {newLesson.type === 'video' && (
+                    <input
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 md:col-span-2"
+                      placeholder="Video URL or Storage Path (e.g., videos/intro.mp4)"
+                      value={newLesson.videoUrl}
+                      onChange={(e) => setNewLesson({ ...newLesson, videoUrl: e.target.value })}
+                    />
+                  )}
+                </div>
+                <button onClick={handleAddLesson} disabled={addingLesson || !newLesson.title.trim()} className={`w-full mt-4 px-4 py-2 text-white rounded-lg transition-colors ${addingLesson ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'} disabled:bg-gray-400 disabled:cursor-not-allowed`}>
+                  {addingLesson ? 'Adding...' : 'Add Lesson'}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>

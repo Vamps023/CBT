@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Link, useLocation, Outlet } from 'react-router-dom'
 import { useAdmin } from '../../contexts/AdminContext'
 import {
@@ -9,16 +10,22 @@ import {
   LogOut,
   Train,
   LayoutGrid,
-  ClipboardList
+  ClipboardList,
+  BookOpen
 } from 'lucide-react'
 
 const AdminLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [isCollapsed, setIsCollapsed] = useState(true)
+  const [isSidebarHovered, setIsSidebarHovered] = useState(false)
   const { user, signOut } = useAdmin()
   const location = useLocation()
 
+  const showFullSidebar = !isCollapsed || isSidebarHovered;
+
   const navigation = [
     { name: 'Dashboard', href: '/admin', icon: BarChart3 },
+    { name: 'Courses', href: '/admin/courses', icon: BookOpen },
     { name: 'Content', href: '/admin/course-content', icon: LayoutGrid },
     { name: 'Assessments', href: '/admin/assessments', icon: ClipboardList },
     { name: 'Enrollments', href: '/admin/enrollments', icon: Users },
@@ -100,47 +107,58 @@ const AdminLayout: React.FC = () => {
         </div>
       </div>
 
-      {/* Desktop sidebar */}
-      <div className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col">
-        <div className="flex flex-col flex-grow bg-white border-r border-gray-200">
-          <div className="flex items-center h-16 px-4 border-b border-gray-200">
-            <div className="flex items-center space-x-3">
-              <div className="bg-blue-600 p-2 rounded-lg">
+            {/* Desktop sidebar */}
+      <div
+        className={`hidden lg:fixed lg:inset-y-0 lg:flex lg:flex-col bg-white border-r border-gray-200 transition-all duration-300 ease-in-out ${showFullSidebar ? 'lg:w-64' : 'lg:w-20'}`}
+        onMouseEnter={() => setIsSidebarHovered(true)}
+        onMouseLeave={() => setIsSidebarHovered(false)}
+      >
+        <div className="flex flex-col flex-grow">
+          <div className={`flex items-center h-14 border-b border-gray-100 ${showFullSidebar ? 'px-4' : 'px-0 justify-center'}`}>
+            <div className="flex items-center">
+              <div className={`bg-blue-600 p-2 rounded-lg`}>
                 <Train className="h-6 w-6 text-white" />
               </div>
-              <span className="text-xl font-bold text-gray-900">Admin Panel</span>
+              <span className={`text-xl font-bold text-gray-900 transition-opacity duration-200 ${showFullSidebar ? 'opacity-100 ml-3' : 'opacity-0 w-0'}`}>Admin Panel</span>
             </div>
           </div>
-          <nav className="flex-1 px-4 py-4">
+          <nav className="flex-1 px-3 py-4 overflow-y-auto overflow-x-hidden">
             <ul className="space-y-2">
               {navigation.map((item) => {
                 const isActive = location.pathname === item.href
                 return (
-                  <li key={item.name}>
+                  <li key={item.name} className="relative group">
                     <Link
                       to={item.href}
-                      className={`flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                        isActive
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'text-gray-700 hover:bg-gray-100'
-                      }`}
+                      className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'} ${!showFullSidebar && 'justify-center'}`}
                     >
-                      <item.icon className="h-5 w-5 mr-3" />
-                      {item.name}
+                      <item.icon className="h-5 w-5" />
+                      <span className={`ml-3 transition-opacity duration-200 ${showFullSidebar ? 'opacity-100' : 'opacity-0 w-0'}`}>{item.name}</span>
                     </Link>
+                    {!showFullSidebar && (
+                        <span className="absolute left-full ml-4 px-2 py-1 text-sm font-medium text-white bg-gray-900 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap pointer-events-none">
+                          {item.name}
+                        </span>
+                    )}
                   </li>
                 )
               })}
             </ul>
           </nav>
-          <div className="border-t border-gray-200 p-4">
-            <div className="flex items-center space-x-3 mb-3">
-              <div className="bg-gray-300 rounded-full h-8 w-8 flex items-center justify-center">
+          <div className="border-t border-gray-200 p-4 mt-auto">
+            <button 
+              onClick={() => setIsCollapsed(!isCollapsed)} 
+              className="hidden lg:flex items-center justify-center w-full h-10 mb-2 text-gray-500 hover:bg-gray-100 rounded-lg"
+            >
+              {isCollapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+            </button>
+            <div className={`flex items-center mb-3 ${showFullSidebar ? 'space-x-3' : 'justify-center'}`}>
+              <div className="bg-gray-300 rounded-full h-8 w-8 flex items-center justify-center flex-shrink-0">
                 <span className="text-sm font-medium text-gray-700">
                   {user?.email?.charAt(0).toUpperCase()}
                 </span>
               </div>
-              <div className="flex-1 min-w-0">
+              <div className={`flex-1 min-w-0 transition-opacity duration-200 ${showFullSidebar ? 'opacity-100' : 'opacity-0 w-0'}`}>
                 <p className="text-sm font-medium text-gray-900 truncate">
                   {user?.email}
                 </p>
@@ -149,17 +167,17 @@ const AdminLayout: React.FC = () => {
             </div>
             <button
               onClick={handleSignOut}
-              className="flex items-center w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              className={`flex items-center w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors ${!showFullSidebar && 'justify-center'}`}
             >
-              <LogOut className="h-4 w-4 mr-3" />
-              Sign Out
+              <LogOut className="h-4 w-4" />
+              <span className={`ml-3 transition-opacity duration-200 ${showFullSidebar ? 'opacity-100' : 'opacity-0 w-0'}`}>Sign Out</span>
             </button>
           </div>
         </div>
       </div>
 
       {/* Main content */}
-      <div className="lg:pl-64">
+            <div className={`transition-all duration-300 ease-in-out ${showFullSidebar ? 'lg:pl-64' : 'lg:pl-20'}`}>
         {/* Top bar */}
         <div className="sticky top-0 z-40 bg-white border-b border-gray-200 lg:hidden">
           <div className="flex items-center justify-between h-16 px-4">

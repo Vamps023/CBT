@@ -44,6 +44,7 @@ const AdminCourses: React.FC = () => {
   
   // Filter and search state
   const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [selectedStatus, setSelectedStatus] = useState<string>('')
   const [sortBy, setSortBy] = useState<'title' | 'created_at' | 'difficulty_level'>('created_at')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
@@ -62,8 +63,13 @@ const AdminCourses: React.FC = () => {
   }, [])
 
   useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm), 300)
+    return () => clearTimeout(t)
+  }, [searchTerm])
+
+  useEffect(() => {
     loadCourses()
-  }, [currentPage, searchTerm, selectedStatus, sortBy, sortOrder])
+  }, [currentPage, debouncedSearch, selectedStatus, sortBy, sortOrder])
 
   const loadInitialData = async () => {
     try {
@@ -91,19 +97,76 @@ const AdminCourses: React.FC = () => {
     }
   }
 
+  const refreshInstructors = async () => {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, full_name, email, role')
+      .eq('role', 'instructor')
+    if (error) {
+      console.error('Failed to refresh instructors:', error)
+      return
+    }
+    setInstructors(data || [])
+  }
+
+  const handleAddInstructor = async () => {
+    const email = window.prompt('Enter user email to promote to Instructor:')?.trim()
+    if (!email) return
+    try {
+      const { data: userRow, error: userErr } = await supabase
+        .from('users')
+        .select('id, email, role, full_name')
+        .eq('email', email)
+        .single()
+      if (userErr || !userRow) {
+        toast.error('User not found')
+        return
+      }
+      if (userRow.role === 'instructor') {
+        toast.success('User is already an instructor')
+        return
+      }
+      const { error: updErr } = await supabase
+        .from('users')
+        .update({ role: 'instructor' })
+        .eq('id', userRow.id)
+      if (updErr) throw updErr
+      await refreshInstructors()
+      toast.success(`Promoted ${email} to instructor`)
+    } catch (e: any) {
+      console.error('Failed to add instructor:', e)
+      toast.error(e?.message || 'Failed to promote user')
+    }
+  }
+
+  const handleTogglePublish = async (courseId: string, nextPublished: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('courses')
+        .update({ is_published: nextPublished, updated_at: new Date().toISOString() })
+        .eq('id', courseId)
+      if (error) throw error
+      setCourses(prev => prev.map(c => (c.id === courseId ? { ...c, is_published: nextPublished } : c)))
+      toast.success(nextPublished ? 'Course published' : 'Course unpublished')
+    } catch (e: any) {
+      console.error('Failed to toggle publish:', e)
+      toast.error(e?.message || 'Failed to update publish status')
+    }
+  }
+
   const loadCourses = async () => {
     try {
       setLoading(true)
       
       let query = supabase
         .from('courses')
-        .select('*', { count: 'exact' })
+        .select('id,title,description,thumbnail_url,duration_hours,difficulty_level,is_published,created_at,updated_at,instructor_id', { count: 'exact' })
         .order(sortBy, { ascending: sortOrder === 'asc' })
         .range((currentPage - 1) * limit, currentPage * limit - 1)
       
       // Apply filters if they exist
-      if (searchTerm) {
-        query = query.ilike('title', `%${searchTerm}%`)
+      if (debouncedSearch) {
+        query = query.ilike('title', `%${debouncedSearch}%`)
       }
       
       if (selectedStatus !== '') {
@@ -133,21 +196,10 @@ const AdminCourses: React.FC = () => {
         toast.error('You must be signed in to create a course')
         return
       }
-      // Fetch instructor full name to denormalize
-      let instructor_name: string | null = null
-      if (courseData.instructor_id) {
-        const { data: instr } = await supabase
-          .from('users')
-          .select('full_name')
-          .eq('id', courseData.instructor_id)
-          .single()
-        instructor_name = instr?.full_name ?? null
-      }
       const { data, error } = await supabase
         .from('courses')
         .insert([{ 
-          ...courseData,
-          instructor_name
+          ...courseData
         }])
         .select()
         .single()
@@ -176,21 +228,10 @@ const AdminCourses: React.FC = () => {
     
     try {
       setFormLoading(true)
-      // Fetch instructor full name to denormalize
-      let instructor_name: string | null = null
-      if (courseData.instructor_id) {
-        const { data: instr } = await supabase
-          .from('users')
-          .select('full_name')
-          .eq('id', courseData.instructor_id)
-          .single()
-        instructor_name = instr?.full_name ?? null
-      }
       const { data, error } = await supabase
         .from('courses')
         .update({
           ...courseData,
-          instructor_name,
           updated_at: new Date().toISOString()
         })
         .eq('id', editingCourse.id)
@@ -316,37 +357,6 @@ const AdminCourses: React.FC = () => {
     window.open(`/courses/${courseId}`, '_blank')
   }
 
-  const handleAssignCourse = async (courseId: string) => {
-    const email = window.prompt('Enter student email to assign this course:')?.trim()
-    if (!email) return
-    try {
-      // Find user by email
-      const { data: userRow, error: userErr } = await supabase
-        .from('users')
-        .select('id, email, full_name, role')
-        .eq('email', email)
-        .single()
-      if (userErr || !userRow) {
-        toast.error('User not found')
-        return
-      }
-
-      // Assign via upsert to avoid duplicate errors
-      const { error: enrollErr } = await supabase
-        .from('enrollments')
-        .upsert(
-          [{ user_id: userRow.id, course_id: courseId, progress_percentage: 0 }],
-          { onConflict: 'user_id,course_id', ignoreDuplicates: true }
-        )
-
-      if (enrollErr) throw enrollErr
-      toast.success(`Assigned course to ${email}`)
-    } catch (e) {
-      console.error('Failed to assign course:', e)
-      toast.error('Failed to assign course')
-    }
-  }
-
   const resetFilters = () => {
     setSearchTerm('')
     setSelectedStatus('')
@@ -363,27 +373,32 @@ const AdminCourses: React.FC = () => {
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Courses</h1>
-          <p className="text-gray-600 mt-1">Manage your course catalog</p>
-        </div>
-        <div className="mt-4 sm:mt-0 flex space-x-3">
-          <button
-            onClick={() => setShowForm(true)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Course
-          </button>
+            <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-bold text-gray-900">Courses</h1>
+        <div className="flex items-center space-x-2">
+            <button
+                onClick={handleAddInstructor}
+                className="bg-white border border-gray-300 text-gray-800 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+                title="Promote a user to Instructor by email"
+            >
+                Add Instructor
+            </button>
+            <button
+                onClick={() => setShowForm(true)}
+                className="bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors flex items-center text-sm"
+            >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Course
+            </button>
         </div>
       </div>
+      <p className="text-gray-600 mb-6">Manage your course catalog, search for courses, and perform bulk actions.</p>
 
-      {/* Filters and Search */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            {/* Filters and Search */}
+      <div className="mb-6">
+                <div className="flex flex-wrap items-center gap-4 mb-4">
           {/* Search */}
-          <div className="relative">
+                    <div className="relative flex-grow">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
             <input
               type="text"
@@ -394,10 +409,10 @@ const AdminCourses: React.FC = () => {
             />
           </div>
           {/* Published Filter */}
-          <select
+                    <select
             value={selectedStatus}
             onChange={(e) => setSelectedStatus(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="">All</option>
             <option value="true">Published</option>
@@ -405,7 +420,7 @@ const AdminCourses: React.FC = () => {
           </select>
 
           {/* Sort */}
-          <div className="flex space-x-2">
+          <div className="flex space-x-2 flex-grow sm:flex-grow-0">
             <select
               value={`${sortBy}-${sortOrder}`}
               onChange={(e) => {
@@ -435,7 +450,7 @@ const AdminCourses: React.FC = () => {
 
         {/* Bulk Actions */}
         {selectedCourses.length > 0 && (
-          <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                    <div className="flex items-center justify-between pt-4 border-t border-gray-100">
             <span className="text-sm text-gray-600">
               {selectedCourses.length} course{selectedCourses.length !== 1 ? 's' : ''} selected
             </span>
@@ -489,7 +504,7 @@ const AdminCourses: React.FC = () => {
         onEditCourse={handleEditCourse}
         onDeleteCourse={handleDelete}
         onViewCourse={handleViewCourse}
-        onAssignCourse={handleAssignCourse}
+        onTogglePublish={handleTogglePublish}
         loading={loading}
       />
 

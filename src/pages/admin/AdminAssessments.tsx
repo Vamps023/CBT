@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { Check, Plus, Loader2 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { toast } from 'react-hot-toast'
 import type {
@@ -230,118 +231,130 @@ const AdminAssessments: React.FC = () => {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-semibold mb-4">Assessments</h1>
+            <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-bold text-gray-900">Assessment Editor</h1>
+      </div>
+      <p className="text-gray-600 mb-6">Select a course, module, and lesson to view or edit its assessment.</p>
 
-      <div className="space-y-4 mb-6">
-        <div>
-          <label className="block text-sm text-gray-600 mb-1">Course</label>
-          <select className="border px-3 py-2 rounded w-full" value={selectedCourse} onChange={(e) => setSelectedCourse(e.target.value)}>
-            <option value="">Select a course</option>
+      {/* Selection Flow */}
+      <div className="grid md:grid-cols-3 gap-6 mb-6">
+        {/* Courses */}
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <h3 className="text-lg font-medium text-gray-900 mb-3">1. Select Course</h3>
+          {loadingCourses && <Loader2 className="animate-spin h-5 w-5 text-gray-500" />}
+          <select
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+            value={selectedCourse}
+            onChange={(e) => setSelectedCourse(e.target.value)}
+            disabled={loadingCourses}
+          >
+            <option value="">{loadingCourses ? 'Loading...' : 'Choose a course'}</option>
             {courses.map((c) => (
               <option key={c.id} value={c.id}>{c.title}</option>
             ))}
           </select>
-          {loadingCourses && (
-            <p className="text-xs text-gray-500 mt-1">Loading courses...</p>
-          )}
-          {!loadingCourses && courses.length === 0 && (
-            <p className="text-xs text-gray-500 mt-1">No courses found.</p>
-          )}
         </div>
 
-        <div>
-          <label className="block text-sm text-gray-600 mb-1">Modules</label>
-          {loadingModules && <p className="text-xs text-gray-500">Loading modules...</p>}
-          {!loadingModules && selectedCourse && modules.length === 0 && (
-            <p className="text-xs text-gray-500">No modules found for this course.</p>
-          )}
-          {modules.length > 0 && (
-            <div className="space-x-2">
-              {modules.map((m) => (
-                <button key={m.id} className="px-3 py-1 border rounded mb-2" onClick={() => loadLessons(m.id)}>{m.title}</button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="mb-6">
-        <h2 className="font-semibold mb-2">Lessons</h2>
-        {loadingLessons && <p className="text-xs text-gray-500">Loading lessons...</p>}
-        {!loadingLessons && modules.length > 0 && lessons.length === 0 && (
-          <p className="text-xs text-gray-500">Select a module to view lessons. No lessons loaded yet.</p>
-        )}
-        {lessons.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {lessons.map((l) => (
-              <div key={l.id} className="border rounded p-3">
-                <div className="font-medium">{l.title} <span className="text-xs text-gray-500">({l.type})</span></div>
-                <div className="mt-2 space-x-2">
-                  <button className="text-sm px-3 py-1 bg-blue-600 text-white rounded" onClick={() => ensureAssessment(l.id)}>Open/Create Assessment</button>
-                </div>
-              </div>
+        {/* Modules */}
+        <div className={`bg-white p-4 rounded-lg border ${selectedCourse ? 'border-gray-200' : 'border-gray-200 bg-gray-50'}`}>
+          <h3 className={`text-lg font-medium mb-3 ${selectedCourse ? 'text-gray-900' : 'text-gray-500'}`}>2. Select Module</h3>
+          {loadingModules && <Loader2 className="animate-spin h-5 w-5 text-gray-500" />}
+          <div className="space-y-2">
+            {modules.map((m) => (
+              <button key={m.id} className="w-full text-left px-3 py-2 border rounded-md text-sm transition-colors border-gray-300 hover:bg-gray-50" onClick={() => loadLessons(m.id)}>{m.title}</button>
             ))}
           </div>
-        )}
-      </div>
+          {!loadingModules && selectedCourse && modules.length === 0 && <p className="text-sm text-gray-500">No modules found.</p>}
+        </div>
 
-      {assessment && (
-        <div className="border-t pt-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-semibold">Assessment: {assessment.title}</h3>
-            <div className="text-sm text-gray-600">Passing Score: {assessment.passing_score}%</div>
-          </div>
-
-          <div className="mb-4 flex">
-            <input value={newQuestion} onChange={(e) => setNewQuestion(e.target.value)} placeholder="New question" className="border px-3 py-2 rounded flex-1 mr-2" />
-            <button onClick={addQuestion} className="px-4 py-2 bg-green-600 text-white rounded">Add Question</button>
-          </div>
-
-          <div className="space-y-4">
-            {loadingQuestions && (
-              <p className="text-xs text-gray-500">Loading questions...</p>
-            )}
-            {questions.map((q) => (
-              <div key={q.id} className="border rounded p-3">
-                <div className="font-medium mb-2">{q.prompt}</div>
-                <div className="flex items-center space-x-2">
-                  <input
-                    className="border px-2 py-1 rounded flex-1"
-                    placeholder="Option text"
-                    value={optionDrafts[q.id]?.text || ''}
-                    onChange={(e) => setOptionDraft(q.id, { text: e.target.value })}
-                  />
-                  <label className="text-sm flex items-center space-x-1">
-                    <input type="checkbox" checked={!!optionDrafts[q.id]?.correct} onChange={(e) => setOptionDraft(q.id, { correct: e.target.checked })} />
-                    <span>Correct</span>
-                  </label>
-                  <button
-                    className={`px-3 py-1 text-white rounded ${savingOptionByQuestion[q.id] ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'}`}
-                    disabled={!!savingOptionByQuestion[q.id]}
-                    onClick={() => saveOption(q.id)}
-                  >
-                    {savingOptionByQuestion[q.id] ? 'Saving...' : 'Add Option'}
-                  </button>
-                </div>
-                {optionsByQuestion[q.id]?.length ? (
-                  <ul className="mt-2 space-y-1">
-                    {optionsByQuestion[q.id].map((o: any) => (
-                      <li key={o.id} className="text-sm flex items-center justify-between">
-                        <span>{o.option_text}</span>
-                        {o.is_correct && <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded">Correct</span>}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="mt-2">
-                    <button className="text-xs text-blue-600 hover:underline" onClick={() => loadOptions([q.id])}>Load options</button>
-                    <p className="text-xs text-gray-500">No options loaded.</p>
-                  </div>
+        {/* Lessons */}
+        <div className={`bg-white p-4 rounded-lg border ${lessons.length > 0 ? 'border-gray-200' : 'border-gray-200 bg-gray-50'}`}>
+          <h3 className={`text-lg font-medium mb-3 ${lessons.length > 0 ? 'text-gray-900' : 'text-gray-500'}`}>3. Select Lesson</h3>
+          {loadingLessons && <Loader2 className="animate-spin h-5 w-5 text-gray-500" />}
+          <div className="space-y-2">
+            {lessons.map((l) => (
+              <div key={l.id} className="border rounded-lg p-3 bg-gray-50 text-sm">
+                <div className="font-medium text-gray-800">{l.title} <span className="font-normal text-gray-500">({l.type})</span></div>
+                {l.type === 'assessment' && (
+                  <button className="text-xs mt-2 px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors" onClick={() => ensureAssessment(l.id)}>Edit Assessment</button>
                 )}
               </div>
             ))}
+          </div>
+          {!loadingLessons && modules.length > 0 && lessons.length === 0 && <p className="text-sm text-gray-500">Select a module.</p>}
+        </div>
+      </div>
+
+      {/* Assessment Editor */}
+      {assessment && (
+        <div className="bg-white p-6 rounded-lg border border-gray-200">
+          <div className="flex items-center justify-between mb-4 border-b pb-4">
+            <h3 className="text-xl font-bold text-gray-900">Editing: {assessment.title}</h3>
+            <div className="text-sm text-gray-600">Passing Score: {assessment.passing_score}%</div>
+          </div>
+
+          {/* Add Question Form */}
+          <div className="mb-6">
+            <h4 className="text-lg font-medium text-gray-800 mb-2">Add a New Question</h4>
+            <div className="flex items-center space-x-2">
+              <input
+                value={newQuestion}
+                onChange={(e) => setNewQuestion(e.target.value)}
+                placeholder="Type your question here..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <button onClick={addQuestion} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 flex items-center space-x-2 flex-shrink-0">
+                <Plus size={18} />
+                <span>Add</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Questions List */}
+          <div className="space-y-4">
+            {loadingQuestions && <Loader2 className="animate-spin h-5 w-5 text-gray-500" />}
+            {questions.map((q) => (
+              <div key={q.id} className="border rounded-lg p-4 bg-gray-50">
+                <p className="font-medium text-gray-800 mb-3">{q.prompt}</p>
+                
+                {/* Options List */}
+                <ul className="space-y-2 mb-3">
+                  {(optionsByQuestion[q.id] || []).map((o: any) => (
+                    <li key={o.id} className={`text-sm flex items-center justify-between p-2 rounded-md ${o.is_correct ? 'bg-green-100' : 'bg-white'}`}>
+                      <span>{o.option_text}</span>
+                      {o.is_correct && <Check size={16} className="text-green-600" />}
+                    </li>
+                  ))}
+                </ul>
+                {!(optionsByQuestion[q.id] || []).length && (
+                  <button className="text-xs text-blue-600 hover:underline mb-3" onClick={() => loadOptions([q.id])}>Load/Reload options</button>
+                )}
+
+                {/* Add Option Form */}
+                <div className="flex items-center space-x-2 border-t pt-3 mt-3">
+                  <input
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="New option text..."
+                    value={optionDrafts[q.id]?.text || ''}
+                    onChange={(e) => setOptionDraft(q.id, { text: e.target.value })}
+                  />
+                  <label className="text-sm flex items-center space-x-2 flex-shrink-0">
+                    <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked={!!optionDrafts[q.id]?.correct} onChange={(e) => setOptionDraft(q.id, { correct: e.target.checked })} />
+                    <span>Correct</span>
+                  </label>
+                  <button
+                    className="bg-gray-600 text-white px-3 py-2 text-sm rounded-lg hover:bg-gray-700 transition-colors disabled:bg-gray-400 flex items-center space-x-1"
+                    disabled={!!savingOptionByQuestion[q.id]}
+                    onClick={() => saveOption(q.id)}
+                  >
+                    {savingOptionByQuestion[q.id] ? <Loader2 className="animate-spin h-4 w-4"/> : <Plus size={16} />}
+                    <span>Add</span>
+                  </button>
+                </div>
+              </div>
+            ))}
             {!loadingQuestions && questions.length === 0 && (
-              <p className="text-xs text-gray-500">No questions added yet.</p>
+              <p className="text-sm text-gray-500 text-center py-4">No questions have been added to this assessment yet.</p>
             )}
           </div>
         </div>

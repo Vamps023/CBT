@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { BookOpen, Users, TrendingUp, Clock } from 'lucide-react'
+import { BookOpen, Users, Clock } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 
@@ -21,14 +21,20 @@ const AdminDashboard: React.FC = () => {
     try {
       setLoading(true)
 
-      // Get all courses for stats
-      const { data: courses, error: coursesError } = await supabase
+      // Get total courses count
+      const { count: totalCoursesCount, error: totalCoursesError } = await supabase
         .from('courses')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(5)
+        .select('*', { count: 'exact', head: true })
 
-      if (coursesError) throw coursesError
+      if (totalCoursesError) throw totalCoursesError
+
+      // Get published courses count
+      const { count: publishedCoursesCount, error: publishedCoursesError } = await supabase
+        .from('courses')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_published', true)
+
+      if (publishedCoursesError) throw publishedCoursesError
 
       // Get total students count
       const { count: studentCount, error: studentError } = await supabase
@@ -45,33 +51,45 @@ const AdminDashboard: React.FC = () => {
 
       if (enrollmentError) throw enrollmentError
 
-      // Calculate stats
-      const totalCourses = courses?.length || 0
-      const publishedCourses = courses?.filter(c => c.is_published).length || 0
-
       setStats({
-        totalCourses,
-        publishedCourses,
+        totalCourses: totalCoursesCount || 0,
+        publishedCourses: publishedCoursesCount || 0,
         totalStudents: studentCount || 0,
         totalEnrollments: enrollmentCount || 0
       })
 
-      // Get instructor names for recent courses
-      if (courses && courses.length > 0) {
-        const courseWithInstructors = await Promise.all(courses.map(async (course) => {
-          const { data: instructor } = await supabase
+      // Fetch recent courses for list
+      const { data: recent, error: recentError } = await supabase
+        .from('courses')
+        .select('id, title, description, thumbnail_url, duration_hours, difficulty_level, instructor_id, is_published, created_at')
+        .order('created_at', { ascending: false })
+        .limit(5)
+
+      if (recentError) throw recentError
+
+      // Batch fetch instructor names
+      if (recent && recent.length > 0) {
+        const instructorIds = Array.from(new Set(recent.map(c => c.instructor_id).filter(Boolean)))
+        let instructorsById: Record<string, string> = {}
+        if (instructorIds.length > 0) {
+          const { data: instructors, error: instructorsError } = await supabase
             .from('users')
-            .select('full_name')
-            .eq('id', course.instructor_id)
-            .single()
+            .select('id, full_name')
+            .in('id', instructorIds as string[])
+          if (instructorsError) throw instructorsError
+          instructorsById = (instructors || []).reduce((acc: Record<string, string>, u: any) => {
+            acc[u.id] = u.full_name || 'Unknown Instructor'
+            return acc
+          }, {})
+        }
 
-          return {
-            ...course,
-            instructor_name: instructor?.full_name || 'Unknown Instructor'
-          }
+        const recentWithInstructors = recent.map(c => ({
+          ...c,
+          instructor_name: instructorsById[c.instructor_id] || 'Unknown Instructor'
         }))
-
-        setRecentCourses(courseWithInstructors)
+        setRecentCourses(recentWithInstructors)
+      } else {
+        setRecentCourses([])
       }
     } catch (error) {
       console.error('Error loading dashboard data:', error)
@@ -79,13 +97,6 @@ const AdminDashboard: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount)
   }
 
   const formatDate = (dateString: string) => {
@@ -96,17 +107,8 @@ const AdminDashboard: React.FC = () => {
     })
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'published':
-        return 'bg-green-100 text-green-800'
-      case 'draft':
-        return 'bg-yellow-100 text-yellow-800'
-      case 'archived':
-        return 'bg-red-100 text-red-800'
-      default:
-        return 'bg-gray-100 text-gray-800'
-    }
+  const getStatusColor = (isPublished: boolean) => {
+    return isPublished ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
   }
 
   if (loading) {
@@ -211,8 +213,8 @@ const AdminDashboard: React.FC = () => {
                         {course.title}
                       </p>
                       <div className="flex items-center space-x-2 mt-1">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(course.status)}`}>
-                          {course.status}
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(course.is_published)}`}>
+                          {course.is_published ? 'Published' : 'Draft'}
                         </span>
                         <span className="text-xs text-gray-500">
                           {formatDate(course.created_at)}
@@ -220,10 +222,7 @@ const AdminDashboard: React.FC = () => {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-medium text-gray-900">
-                        {formatCurrency(course.price)}
-                      </p>
-                      <div className="flex items-center text-sm text-gray-500">
+                      <div className="flex items-center text-sm text-gray-500 justify-end">
                         <div className="flex items-center">
                           <Clock className="h-4 w-4 mr-1" />
                           <span>{course.duration_hours} hours</span>
