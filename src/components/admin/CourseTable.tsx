@@ -1,0 +1,380 @@
+import React, { useState } from 'react'
+import { 
+  Edit, 
+  Trash2, 
+  Eye, 
+  MoreHorizontal, 
+  CheckSquare, 
+  Square,
+  Archive,
+  Globe,
+  FileText
+} from 'lucide-react'
+import { AdminCourse, CourseStatus } from '../../lib/supabase-admin'
+
+interface CourseTableProps {
+  courses: AdminCourse[]
+  selectedCourses: string[]
+  onSelectCourse: (courseId: string) => void
+  onSelectAll: (selected: boolean) => void
+  onEditCourse: (course: AdminCourse) => void
+  onDeleteCourse: (courseId: string) => void
+  onViewCourse: (courseId: string) => void
+  loading?: boolean
+}
+
+const CourseTable: React.FC<CourseTableProps> = ({
+  courses,
+  selectedCourses,
+  onSelectCourse,
+  onSelectAll,
+  onEditCourse,
+  onDeleteCourse,
+  onViewCourse,
+  loading = false
+}) => {
+  const [dropdownOpen, setDropdownOpen] = useState<string | null>(null)
+
+  const allSelected = courses.length > 0 && selectedCourses.length === courses.length
+  const someSelected = selectedCourses.length > 0 && selectedCourses.length < courses.length
+
+  const getStatusBadge = (status: CourseStatus) => {
+    const badges = {
+      draft: 'bg-gray-100 text-gray-800',
+      published: 'bg-green-100 text-green-800',
+      archived: 'bg-red-100 text-red-800'
+    }
+    
+    const icons = {
+      draft: FileText,
+      published: Globe,
+      archived: Archive
+    }
+    
+    const Icon = icons[status]
+    
+    return (
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${badges[status]}`}>
+        <Icon className="h-3 w-3 mr-1" />
+        {status.charAt(0).toUpperCase() + status.slice(1)}
+      </span>
+    )
+  }
+
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(price)
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    })
+  }
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200">
+        <div className="animate-pulse">
+          <div className="h-12 bg-gray-100 border-b border-gray-200"></div>
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="h-16 bg-gray-50 border-b border-gray-100"></div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      {/* Desktop Table */}
+      <div className="hidden md:block overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left">
+                <button
+                  onClick={() => onSelectAll(!allSelected)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  {allSelected ? (
+                    <CheckSquare className="h-5 w-5" />
+                  ) : someSelected ? (
+                    <div className="h-5 w-5 bg-blue-600 rounded border-2 border-blue-600 flex items-center justify-center">
+                      <div className="h-2 w-2 bg-white rounded-sm" />
+                    </div>
+                  ) : (
+                    <Square className="h-5 w-5" />
+                  )}
+                </button>
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Course
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Category
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Instructor
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Price
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Duration
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Status
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Created
+              </th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {courses.map((course) => (
+              <tr key={course.id} className="hover:bg-gray-50">
+                <td className="px-6 py-4">
+                  <button
+                    onClick={() => onSelectCourse(course.id)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    {selectedCourses.includes(course.id) ? (
+                      <CheckSquare className="h-5 w-5 text-blue-600" />
+                    ) : (
+                      <Square className="h-5 w-5" />
+                    )}
+                  </button>
+                </td>
+                <td className="px-6 py-4">
+                  <div className="flex items-center">
+                    {course.thumbnail_url && (
+                      <img
+                        src={course.thumbnail_url}
+                        alt={course.title}
+                        className="h-10 w-10 rounded-lg object-cover mr-3"
+                      />
+                    )}
+                    <div>
+                      <div className="text-sm font-medium text-gray-900 line-clamp-1">
+                        {course.title}
+                      </div>
+                      <div className="text-sm text-gray-500 line-clamp-1">
+                        {course.description}
+                      </div>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className="text-sm text-gray-900">
+                    {course.categories?.name || 'No category'}
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="flex items-center">
+                    {course.instructors?.avatar_url && (
+                      <img
+                        src={course.instructors.avatar_url}
+                        alt={course.instructors.name}
+                        className="h-6 w-6 rounded-full mr-2"
+                      />
+                    )}
+                    <span className="text-sm text-gray-900">
+                      {course.instructors?.name || 'No instructor'}
+                    </span>
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  {formatPrice(course.price)}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  {course.duration_hours}h
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  {getStatusBadge(course.status)}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {formatDate(course.created_at)}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <div className="relative">
+                    <button
+                      onClick={() => setDropdownOpen(dropdownOpen === course.id ? null : course.id)}
+                      className="text-gray-400 hover:text-gray-600 p-1"
+                    >
+                      <MoreHorizontal className="h-5 w-5" />
+                    </button>
+                    
+                    {dropdownOpen === course.id && (
+                      <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                        <div className="py-1">
+                          <button
+                            onClick={() => {
+                              onViewCourse(course.id)
+                              setDropdownOpen(null)
+                            }}
+                            className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            View Details
+                          </button>
+                          <button
+                            onClick={() => {
+                              onEditCourse(course)
+                              setDropdownOpen(null)
+                            }}
+                            className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                          >
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit Course
+                          </button>
+                          <button
+                            onClick={() => {
+                              onDeleteCourse(course.id)
+                              setDropdownOpen(null)
+                            }}
+                            className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete Course
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobile Cards */}
+      <div className="md:hidden">
+        {courses.map((course) => (
+          <div key={course.id} className="border-b border-gray-200 p-4">
+            <div className="flex items-start space-x-3">
+              <button
+                onClick={() => onSelectCourse(course.id)}
+                className="text-gray-400 hover:text-gray-600 mt-1"
+              >
+                {selectedCourses.includes(course.id) ? (
+                  <CheckSquare className="h-5 w-5 text-blue-600" />
+                ) : (
+                  <Square className="h-5 w-5" />
+                )}
+              </button>
+              
+              {course.thumbnail_url && (
+                <img
+                  src={course.thumbnail_url}
+                  alt={course.title}
+                  className="h-16 w-16 rounded-lg object-cover flex-shrink-0"
+                />
+              )}
+              
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h3 className="text-sm font-medium text-gray-900 line-clamp-2">
+                      {course.title}
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                      {course.description}
+                    </p>
+                  </div>
+                  
+                  <div className="relative ml-2">
+                    <button
+                      onClick={() => setDropdownOpen(dropdownOpen === course.id ? null : course.id)}
+                      className="text-gray-400 hover:text-gray-600 p-1"
+                    >
+                      <MoreHorizontal className="h-5 w-5" />
+                    </button>
+                    
+                    {dropdownOpen === course.id && (
+                      <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                        <div className="py-1">
+                          <button
+                            onClick={() => {
+                              onViewCourse(course.id)
+                              setDropdownOpen(null)
+                            }}
+                            className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            View Details
+                          </button>
+                          <button
+                            onClick={() => {
+                              onEditCourse(course)
+                              setDropdownOpen(null)
+                            }}
+                            className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                          >
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit Course
+                          </button>
+                          <button
+                            onClick={() => {
+                              onDeleteCourse(course.id)
+                              setDropdownOpen(null)
+                            }}
+                            className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete Course
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="flex items-center justify-between mt-3">
+                  <div className="flex items-center space-x-4 text-xs text-gray-500">
+                    <span>{formatPrice(course.price)}</span>
+                    <span>{course.duration_hours}h</span>
+                    <span>{course.categories?.name}</span>
+                  </div>
+                  {getStatusBadge(course.status)}
+                </div>
+                
+                <div className="flex items-center mt-2 text-xs text-gray-500">
+                  {course.instructors?.avatar_url && (
+                    <img
+                      src={course.instructors.avatar_url}
+                      alt={course.instructors.name}
+                      className="h-4 w-4 rounded-full mr-1"
+                    />
+                  )}
+                  <span>{course.instructors?.name}</span>
+                  <span className="mx-2">•</span>
+                  <span>{formatDate(course.created_at)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Empty State */}
+      {courses.length === 0 && (
+        <div className="text-center py-12">
+          <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No courses found</h3>
+          <p className="text-gray-500">Get started by creating your first course.</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default CourseTable
