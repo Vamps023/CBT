@@ -2,27 +2,37 @@ import React, { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { yupResolver } from '@hookform/resolvers/yup'
 import * as yup from 'yup'
-import { X, Upload, DollarSign, Clock, Tag, User } from 'lucide-react'
-import { CreateCourseData, UpdateCourseData, Category, Instructor, CourseStatus } from '../../lib/supabase-admin'
+import { X, Upload, Clock, User } from 'lucide-react'
+
+// Local types matching public.courses
+type Difficulty = 'beginner' | 'intermediate' | 'advanced'
+
+export type CreateCourseForm = {
+  title: string
+  description: string
+  duration_hours: number
+  difficulty_level: Difficulty
+  instructor_id: string
+  is_published: boolean
+  thumbnail_url: string | null
+}
 
 const schema = yup.object({
   title: yup.string().required('Title is required').min(3, 'Title must be at least 3 characters'),
   description: yup.string().required('Description is required').min(10, 'Description must be at least 10 characters'),
-  price: yup.number().required('Price is required').min(0, 'Price must be positive'),
   duration_hours: yup.number().required('Duration is required').min(1, 'Duration must be at least 1 hour'),
-  category_id: yup.string().required('Category is required'),
+  difficulty_level: yup.mixed<Difficulty>().oneOf(['beginner','intermediate','advanced']).required('Difficulty is required'),
   instructor_id: yup.string().required('Instructor is required'),
-  status: yup.string().oneOf(['draft', 'published', 'archived']).required('Status is required'),
-  thumbnail_url: yup.string().url('Must be a valid URL').optional(),
-})
+  is_published: yup.boolean().required(),
+  thumbnail_url: yup.string().url('Must be a valid URL').nullable().notRequired(),
+}).required()
 
 interface CourseFormProps {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (data: CreateCourseData | UpdateCourseData) => Promise<void>
-  initialData?: Partial<CreateCourseData>
-  categories: Category[]
-  instructors: Instructor[]
+  onSubmit: (data: CreateCourseForm) => Promise<void>
+  initialData?: Partial<CreateCourseForm>
+  instructors: { id: string; full_name: string }[]
   loading?: boolean
   title: string
 }
@@ -32,7 +42,6 @@ const CourseForm: React.FC<CourseFormProps> = ({
   onClose,
   onSubmit,
   initialData,
-  categories,
   instructors,
   loading = false,
   title
@@ -44,17 +53,16 @@ const CourseForm: React.FC<CourseFormProps> = ({
     reset,
     setValue,
     watch
-  } = useForm<CreateCourseData>({
-    resolver: yupResolver(schema),
+  } = useForm<CreateCourseForm>({
+    resolver: yupResolver(schema) as unknown as import('react-hook-form').Resolver<CreateCourseForm>,
     defaultValues: {
       title: '',
       description: '',
-      price: 0,
       duration_hours: 1,
-      category_id: '',
+      difficulty_level: 'beginner',
       instructor_id: '',
-      status: 'draft' as CourseStatus,
-      thumbnail_url: '',
+      is_published: false,
+      thumbnail_url: null,
       ...initialData
     }
   })
@@ -64,12 +72,16 @@ const CourseForm: React.FC<CourseFormProps> = ({
   useEffect(() => {
     if (initialData) {
       Object.entries(initialData).forEach(([key, value]) => {
-        setValue(key as keyof CreateCourseData, value)
+        if (key === 'thumbnail_url') {
+          setValue('thumbnail_url', (value as any) ?? null)
+        } else {
+          setValue(key as keyof CreateCourseForm, value as any)
+        }
       })
     }
   }, [initialData, setValue])
 
-  const handleFormSubmit = async (data: CreateCourseData) => {
+  const handleFormSubmit: import('react-hook-form').SubmitHandler<CreateCourseForm> = async (data) => {
     try {
       await onSubmit(data)
       reset()
@@ -132,33 +144,15 @@ const CourseForm: React.FC<CourseFormProps> = ({
               )}
             </div>
 
-            {/* Price and Duration */}
+            {/* Duration and Instructor */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <DollarSign className="inline h-4 w-4 mr-1" />
-                  Price *
-                </label>
-                <input
-                  {...register('price')}
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="0.00"
-                />
-                {errors.price && (
-                  <p className="mt-1 text-sm text-red-600">{errors.price.message}</p>
-                )}
-              </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   <Clock className="inline h-4 w-4 mr-1" />
                   Duration (hours) *
                 </label>
                 <input
-                  {...register('duration_hours')}
+                  {...register('duration_hours', { valueAsNumber: true })}
                   type="number"
                   min="1"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -166,30 +160,6 @@ const CourseForm: React.FC<CourseFormProps> = ({
                 />
                 {errors.duration_hours && (
                   <p className="mt-1 text-sm text-red-600">{errors.duration_hours.message}</p>
-                )}
-              </div>
-            </div>
-
-            {/* Category and Instructor */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Tag className="inline h-4 w-4 mr-1" />
-                  Category *
-                </label>
-                <select
-                  {...register('category_id')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Select a category</option>
-                  {categories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-                {errors.category_id && (
-                  <p className="mt-1 text-sm text-red-600">{errors.category_id.message}</p>
                 )}
               </div>
 
@@ -205,7 +175,7 @@ const CourseForm: React.FC<CourseFormProps> = ({
                   <option value="">Select an instructor</option>
                   {instructors.map((instructor) => (
                     <option key={instructor.id} value={instructor.id}>
-                      {instructor.name}
+                      {instructor.full_name || 'Unnamed'}
                     </option>
                   ))}
                 </select>
@@ -215,22 +185,37 @@ const CourseForm: React.FC<CourseFormProps> = ({
               </div>
             </div>
 
-            {/* Status */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Status *
-              </label>
-              <select
-                {...register('status')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="draft">Draft</option>
-                <option value="published">Published</option>
-                <option value="archived">Archived</option>
-              </select>
-              {errors.status && (
-                <p className="mt-1 text-sm text-red-600">{errors.status.message}</p>
-              )}
+            {/* Difficulty and Published */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Difficulty *
+                </label>
+                <select
+                  {...register('difficulty_level')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="beginner">Beginner</option>
+                  <option value="intermediate">Intermediate</option>
+                  <option value="advanced">Advanced</option>
+                </select>
+                {errors.difficulty_level && (
+                  <p className="mt-1 text-sm text-red-600">{(errors.difficulty_level as any).message}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Published *
+                </label>
+                <select
+                  {...register('is_published', { setValueAs: (v) => v === 'true' })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="false">Unpublished</option>
+                  <option value="true">Published</option>
+                </select>
+              </div>
             </div>
 
             {/* Thumbnail URL */}
@@ -240,7 +225,7 @@ const CourseForm: React.FC<CourseFormProps> = ({
                 Thumbnail URL
               </label>
               <input
-                {...register('thumbnail_url')}
+                {...register('thumbnail_url', { setValueAs: (v) => (v === '' ? null : v) })}
                 type="url"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="https://example.com/image.jpg"

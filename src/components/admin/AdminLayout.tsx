@@ -4,13 +4,12 @@ import { useAdmin } from '../../contexts/AdminContext'
 import {
   Menu,
   X,
-  BookOpen,
   Users,
-  Tag,
   BarChart3,
-  Settings,
   LogOut,
-  Train
+  Train,
+  LayoutGrid,
+  ClipboardList
 } from 'lucide-react'
 
 const AdminLayout: React.FC = () => {
@@ -20,10 +19,9 @@ const AdminLayout: React.FC = () => {
 
   const navigation = [
     { name: 'Dashboard', href: '/admin', icon: BarChart3 },
-    { name: 'Courses', href: '/admin/courses', icon: BookOpen },
-    { name: 'Categories', href: '/admin/categories', icon: Tag },
-    { name: 'Instructors', href: '/admin/instructors', icon: Users },
-    { name: 'Settings', href: '/admin/settings', icon: Settings },
+    { name: 'Content', href: '/admin/course-content', icon: LayoutGrid },
+    { name: 'Assessments', href: '/admin/assessments', icon: ClipboardList },
+    { name: 'Enrollments', href: '/admin/enrollments', icon: Users },
   ]
 
   const handleSignOut = async () => {

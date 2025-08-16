@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
-import { User } from '@supabase/supabase-js'
+import { User, Session, AuthChangeEvent } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 
@@ -24,38 +24,91 @@ export const useAdmin = () => {
 export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isAdmin, setIsAdmin] = useState(false)
 
-  // Check if user is admin (in a real app, this would be stored in user metadata or a separate table)
-  const isAdmin = user?.email === 'admin@sogeclair.com' || user?.user_metadata?.role === 'admin'
+  const checkAdminStatus = async (user: User | null) => {
+    if (!user) {
+      setIsAdmin(false)
+      return
+    }
+    
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+      
+      if (error) throw error
+      setIsAdmin(data?.role === 'admin')
+    } catch (error) {
+      console.error('Error checking admin status:', error)
+      setIsAdmin(false)
+    }
+  }
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const initializeAuth = async () => {
+      // Check active sessions and sets the user
+      const { data: { session } } = await supabase.auth.getSession()
       setUser(session?.user ?? null)
+      await checkAdminStatus(session?.user ?? null)
       setLoading(false)
-    })
 
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-      setLoading(false)
-    })
+      // Listen for changes on auth state (logged in, signed out, etc.)
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        async (_event: AuthChangeEvent, session: Session | null) => {
+          setUser(session?.user ?? null)
+          await checkAdminStatus(session?.user ?? null)
+          setLoading(false)
+        }
+      )
 
-    return () => subscription.unsubscribe()
+      return () => {
+        subscription.unsubscribe()
+      }
+    }
+
+    initializeAuth()
   }, [])
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-    if (error) {
-      toast.error(error.message)
+    try {
+      setLoading(true)
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+      
+      if (error) throw error
+      
+      if (data.user) {
+        // Check if user has admin role in the users table
+        const { data: userData, error: roleError } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', data.user.id)
+          .single()
+          
+        if (roleError) throw roleError
+        
+        if (userData?.role !== 'admin') {
+          await supabase.auth.signOut()
+          throw new Error('Access denied. Admin privileges required.')
+        }
+        
+        setIsAdmin(true)
+        setUser(data.user)
+        toast.success('Successfully signed in as admin')
+      }
+    } catch (error: any) {
+      console.error('Login error:', error)
+      const errorMessage = error.error_description || error.message || 'An error occurred during sign in'
+      toast.error(errorMessage)
       throw error
+    } finally {
+      setLoading(false)
     }
-    toast.success('Signed in successfully')
   }
 
   const signOut = async () => {

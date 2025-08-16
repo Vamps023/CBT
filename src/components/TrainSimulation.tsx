@@ -13,8 +13,11 @@ interface TrainProps {
 
 const Train: React.FC<TrainProps> = ({ position, isMoving, speed, brakeApplied }) => {
   const meshRef = useRef<THREE.Group>(null!)
-const { nodes: trainNodes, materials: trainMaterials } = useGLTF('https://xbbqodtwupcdznhhvedq.supabase.co/storage/v1/object/sign/asset/wooden_train_toy.glb?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9mMThhNWJjZS0zOTcxLTQxMzQtYTNiNC05NDVmNjUzNjM3NTQiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJhc3NldC93b29kZW5fdHJhaW5fdG95LmdsYiIsImlhdCI6MTc1NDAyNzE1MiwiZXhwIjoxNzU2NjE5MTUyfQ.av39aJgUE6EknCvAyYGov75MZpeydX8vCyox-0ctBHQ')
-  const { nodes: carriageNodes, materials: carriageMaterials } = useGLTF('https://xbbqodtwupcdznhhvedq.supabase.co/storage/v1/object/sign/asset/train_carriage.glb?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9mMThhNWJjZS0zOTcxLTQxMzQtYTNiNC05NDVmNjUzNjM3NTQiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJhc3NldC90cmFpbl9jYXJyaWFnZS5nbGIiLCJpYXQiOjE3NTQwMjcxNDAsImV4cCI6MTc1NjYxOTE0MH0.yazo95UdFRyaYInccOc2-cZ53FV4JqYHPEzFQ5HRO3s')
+  // Load GLTF models from local assets to avoid expired signed URLs
+  const trainUrl = new URL('../assets/wooden_train_toy.glb', import.meta.url).href
+  const carriageUrl = new URL('../assets/train_carriage.glb', import.meta.url).href
+  const { nodes: trainNodes, materials: trainMaterials } = useGLTF(trainUrl) as any
+  const { nodes: carriageNodes, materials: carriageMaterials } = useGLTF(carriageUrl) as any
   
   useFrame((state, delta) => {
     if (meshRef.current && isMoving && !brakeApplied) {
@@ -396,7 +399,7 @@ const TrainSimulation: React.FC<TrainSimulationProps> = ({ courseId }) => {
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">System Status</h3>
               
-              <div class="space-y-3">
+              <div className="space-y-3">
                 <div className="flex items-center justify-between p-3 bg-white rounded-lg border">
                   <span className="text-gray-700">Engine Status</span>
                   <span className={`px-2 py-1 rounded-full text-xs font-medium ${

@@ -1,4 +1,3 @@
-import React from 'react'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider } from './contexts/AuthContext'
@@ -15,7 +14,9 @@ import CourseDetail from './pages/CourseDetail'
 import Dashboard from './pages/Dashboard'
 import AdminLogin from './pages/admin/AdminLogin'
 import AdminDashboard from './pages/admin/AdminDashboard'
-import AdminCourses from './pages/admin/AdminCourses'
+import AdminAssessments from './pages/admin/AdminAssessments.tsx';
+import AdminEnrollments from './pages/admin/AdminEnrollments.tsx';
+import AdminCourseContent from './pages/admin/AdminCourseContent.tsx';
 
 function App() {
   return (
@@ -73,10 +74,9 @@ function App() {
                 </AdminProtectedRoute>
               }>
                 <Route index element={<AdminDashboard />} />
-                <Route path="courses" element={<AdminCourses />} />
-                <Route path="categories" element={<div className="p-6">Categories management coming soon...</div>} />
-                <Route path="instructors" element={<div className="p-6">Instructors management coming soon...</div>} />
-                <Route path="settings" element={<div className="p-6">Settings coming soon...</div>} />
+                <Route path="enrollments" element={<AdminEnrollments />} />
+                <Route path="course-content" element={<AdminCourseContent />} />
+                <Route path="assessments" element={<AdminAssessments />} />
               </Route>
             </Routes>
             

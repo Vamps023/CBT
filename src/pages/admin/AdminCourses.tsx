@@ -2,31 +2,39 @@ import React, { useState, useEffect } from 'react'
 import { 
   Plus, 
   Search, 
-  Filter, 
-  Download, 
+  RefreshCw, 
   Trash2, 
-  Archive,
-  Globe,
-  RefreshCw
+  Globe, 
+  FileText
 } from 'lucide-react'
-import { 
-  courseService, 
-  categoryService, 
-  instructorService,
-  AdminCourse, 
-  Category, 
-  Instructor,
-  CourseStatus,
-  subscribeToCoursesChanges
-} from '../../lib/supabase-admin'
-import CourseForm from '../../components/admin/CourseForm'
+import { supabase } from '../../lib/supabase'
+import CourseForm, { CreateCourseForm } from '../../components/admin/CourseForm'
 import CourseTable from '../../components/admin/CourseTable'
 import toast from 'react-hot-toast'
 
+type AdminCourse = {
+  id: string
+  title: string
+  description: string
+  thumbnail_url?: string
+  is_published: boolean
+  created_at: string
+  updated_at: string
+  instructor_id: string
+  difficulty_level: 'beginner' | 'intermediate' | 'advanced'
+  duration_hours: number
+}
+
+type User = {
+  id: string
+  full_name: string
+  email: string
+  role: string
+}
+
 const AdminCourses: React.FC = () => {
   const [courses, setCourses] = useState<AdminCourse[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
-  const [instructors, setInstructors] = useState<Instructor[]>([])
+  const [instructors, setInstructors] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [formLoading, setFormLoading] = useState(false)
   
@@ -36,9 +44,8 @@ const AdminCourses: React.FC = () => {
   
   // Filter and search state
   const [searchTerm, setSearchTerm] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState('')
-  const [selectedStatus, setSelectedStatus] = useState<CourseStatus | ''>('')
-  const [sortBy, setSortBy] = useState<'title' | 'created_at' | 'price'>('created_at')
+  const [selectedStatus, setSelectedStatus] = useState<string>('')
+  const [sortBy, setSortBy] = useState<'title' | 'created_at' | 'difficulty_level'>('created_at')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   
   // Selection state
@@ -52,52 +59,63 @@ const AdminCourses: React.FC = () => {
 
   useEffect(() => {
     loadInitialData()
-    
-    // Set up real-time subscription
-    const subscription = subscribeToCoursesChanges(() => {
-      loadCourses()
-    })
-    
-    return () => {
-      subscription.unsubscribe()
-    }
   }, [])
 
   useEffect(() => {
     loadCourses()
-  }, [currentPage, searchTerm, selectedCategory, selectedStatus, sortBy, sortOrder])
+  }, [currentPage, searchTerm, selectedStatus, sortBy, sortOrder])
 
   const loadInitialData = async () => {
     try {
-      const [categoriesData, instructorsData] = await Promise.all([
-        categoryService.getCategories(),
-        instructorService.getInstructors()
-      ])
+      setLoading(true)
       
-      setCategories(categoriesData)
-      setInstructors(instructorsData)
+      // Load instructors (users with role 'instructor')
+      const { data: instructorsData, error: instructorsError } = await supabase
+        .from('users')
+        .select('id, full_name, email, role')
+        .eq('role', 'instructor')
+      
+      if (instructorsError) {
+        console.error('Failed to fetch instructors:', instructorsError.message)
+        throw instructorsError
+      }
+      setInstructors(instructorsData || [])
+      
+      // Load courses
+      await loadCourses()
     } catch (error) {
       console.error('Error loading initial data:', error)
       toast.error('Failed to load initial data')
+    } finally {
+      setLoading(false)
     }
   }
 
   const loadCourses = async () => {
     try {
       setLoading(true)
-      const result = await courseService.getCourses({
-        page: currentPage,
-        limit,
-        search: searchTerm || undefined,
-        category: selectedCategory || undefined,
-        status: selectedStatus || undefined,
-        sortBy,
-        sortOrder
-      })
       
-      setCourses(result.courses)
-      setTotalPages(result.totalPages)
-      setTotalCount(result.totalCount)
+      let query = supabase
+        .from('courses')
+        .select('*', { count: 'exact' })
+        .order(sortBy, { ascending: sortOrder === 'asc' })
+        .range((currentPage - 1) * limit, currentPage * limit - 1)
+      
+      // Apply filters if they exist
+      if (searchTerm) {
+        query = query.ilike('title', `%${searchTerm}%`)
+      }
+      
+      if (selectedStatus !== '') {
+        query = query.eq('is_published', selectedStatus === 'true')
+      }
+      
+      const { data, error, count } = await query
+      if (error) throw error
+      
+      setCourses((data as any as AdminCourse[]) || [])
+      setTotalPages(Math.ceil((count || 0) / limit))
+      setTotalCount(count || 0)
     } catch (error) {
       console.error('Error loading courses:', error)
       toast.error('Failed to load courses')
@@ -106,49 +124,119 @@ const AdminCourses: React.FC = () => {
     }
   }
 
-  const handleCreateCourse = async (courseData: any) => {
+  const handleCreateCourse = async (courseData: CreateCourseForm) => {
     try {
       setFormLoading(true)
-      await courseService.createCourse(courseData)
+      // Ensure user is authenticated before attempting insert (RLS requires it)
+      const { data: authUser } = await supabase.auth.getUser()
+      if (!authUser?.user) {
+        toast.error('You must be signed in to create a course')
+        return
+      }
+      // Fetch instructor full name to denormalize
+      let instructor_name: string | null = null
+      if (courseData.instructor_id) {
+        const { data: instr } = await supabase
+          .from('users')
+          .select('full_name')
+          .eq('id', courseData.instructor_id)
+          .single()
+        instructor_name = instr?.full_name ?? null
+      }
+      const { data, error } = await supabase
+        .from('courses')
+        .insert([{ 
+          ...courseData,
+          instructor_name
+        }])
+        .select()
+        .single()
+      
+      if (error) {
+        console.error('Supabase insert error (courses):', error)
+        throw error
+      }
+      
+      if (data) {
+        setCourses([data as unknown as AdminCourse, ...courses])
+      }
       toast.success('Course created successfully')
-      loadCourses()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating course:', error)
-      toast.error('Failed to create course')
-      throw error
+      const msg = error?.message || 'Failed to create course'
+      const details = error?.details || error?.hint || ''
+      toast.error(`${msg}${details ? ` — ${details}` : ''}`)
     } finally {
       setFormLoading(false)
     }
   }
 
-  const handleUpdateCourse = async (courseData: any) => {
+  const handleUpdateCourse = async (courseData: CreateCourseForm) => {
     if (!editingCourse) return
     
     try {
       setFormLoading(true)
-      await courseService.updateCourse(editingCourse.id, courseData)
+      // Fetch instructor full name to denormalize
+      let instructor_name: string | null = null
+      if (courseData.instructor_id) {
+        const { data: instr } = await supabase
+          .from('users')
+          .select('full_name')
+          .eq('id', courseData.instructor_id)
+          .single()
+        instructor_name = instr?.full_name ?? null
+      }
+      const { data, error } = await supabase
+        .from('courses')
+        .update({
+          ...courseData,
+          instructor_name,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', editingCourse.id)
+        .select()
+        .single()
+      
+      if (error) {
+        console.error('Supabase update error (courses):', error)
+        throw error
+      }
+      
+      if (data) {
+        setCourses(courses.map(course => course.id === editingCourse.id ? (data as unknown as AdminCourse) : course))
+      }
       toast.success('Course updated successfully')
-      loadCourses()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating course:', error)
-      toast.error('Failed to update course')
-      throw error
+      const msg = error?.message || 'Failed to update course'
+      const details = error?.details || error?.hint || ''
+      toast.error(`${msg}${details ? ` — ${details}` : ''}`)
     } finally {
       setFormLoading(false)
     }
   }
 
-  const handleDeleteCourse = async (courseId: string) => {
-    if (!confirm('Are you sure you want to delete this course?')) return
-    
-    try {
-      await courseService.deleteCourse(courseId)
-      toast.success('Course deleted successfully')
-      loadCourses()
-      setSelectedCourses(selectedCourses.filter(id => id !== courseId))
-    } catch (error) {
-      console.error('Error deleting course:', error)
-      toast.error('Failed to delete course')
+  const handleDelete = async (courseId: string) => {
+    if (window.confirm('Are you sure you want to delete this course?')) {
+      try {
+        const { error } = await supabase
+          .from('courses')
+          .delete()
+          .eq('id', courseId)
+        
+        if (error) {
+          console.error('Supabase delete error (courses):', error)
+          throw error
+        }
+        
+        setCourses(courses.filter(course => course.id !== courseId))
+        toast.success('Course deleted successfully')
+      } catch (error: any) {
+        console.error('Error deleting course:', error)
+        const msg = error?.message || 'Failed to delete course'
+        const details = error?.details || error?.hint || ''
+        toast.error(`${msg}${details ? ` — ${details}` : ''}`)
+      }
     }
   }
 
@@ -157,27 +245,50 @@ const AdminCourses: React.FC = () => {
     if (!confirm(`Are you sure you want to delete ${selectedCourses.length} courses?`)) return
     
     try {
-      await courseService.bulkDeleteCourses(selectedCourses)
+      const { error } = await supabase
+        .from('courses')
+        .delete()
+        .in('id', selectedCourses)
+      
+      if (error) {
+        console.error('Supabase bulk delete error (courses):', error)
+        throw error
+      }
+      
+      setCourses(courses.filter(course => !selectedCourses.includes(course.id)))
       toast.success(`${selectedCourses.length} courses deleted successfully`)
-      loadCourses()
-      setSelectedCourses([])
-    } catch (error) {
-      console.error('Error bulk deleting courses:', error)
-      toast.error('Failed to delete courses')
+    } catch (error: any) {
+      console.error('Error deleting courses:', error)
+      const msg = error?.message || 'Failed to delete courses'
+      const details = error?.details || error?.hint || ''
+      toast.error(`${msg}${details ? ` — ${details}` : ''}`)
     }
   }
 
-  const handleBulkStatusUpdate = async (status: CourseStatus) => {
+  const handleBulkStatusUpdate = async (isPublished: boolean) => {
     if (selectedCourses.length === 0) return
     
     try {
-      await courseService.bulkUpdateStatus(selectedCourses, status)
+      const { error } = await supabase
+        .from('courses')
+        .update({ 
+          is_published: isPublished,
+          updated_at: new Date().toISOString()
+        })
+        .in('id', selectedCourses)
+      
+      if (error) {
+        console.error('Supabase bulk update error (courses):', error)
+        throw error
+      }
+      
+      setCourses(courses.map(course => selectedCourses.includes(course.id) ? { ...course, is_published: isPublished } : course))
       toast.success(`${selectedCourses.length} courses updated successfully`)
-      loadCourses()
-      setSelectedCourses([])
-    } catch (error) {
-      console.error('Error bulk updating courses:', error)
-      toast.error('Failed to update courses')
+    } catch (error: any) {
+      console.error('Error updating courses:', error)
+      const msg = error?.message || 'Failed to update courses'
+      const details = error?.details || error?.hint || ''
+      toast.error(`${msg}${details ? ` — ${details}` : ''}`)
     }
   }
 
@@ -193,19 +304,51 @@ const AdminCourses: React.FC = () => {
     setSelectedCourses(selected ? courses.map(course => course.id) : [])
   }
 
-  const handleEditCourse = (course: AdminCourse) => {
-    setEditingCourse(course)
+  const handleEditCourse = (course: { id: string; title: string; description: string; thumbnail_url?: string; duration_hours: number; difficulty_level: 'beginner' | 'intermediate' | 'advanced'; is_published: boolean; created_at: string }) => {
+    // Find full course from state to retain fields not included in table type (e.g., instructor_id, updated_at)
+    const full = courses.find(c => c.id === course.id)
+    if (full) setEditingCourse(full)
     setShowForm(true)
   }
 
   const handleViewCourse = (courseId: string) => {
     // Navigate to course detail view
-    window.open(`/course/${courseId}`, '_blank')
+    window.open(`/courses/${courseId}`, '_blank')
+  }
+
+  const handleAssignCourse = async (courseId: string) => {
+    const email = window.prompt('Enter student email to assign this course:')?.trim()
+    if (!email) return
+    try {
+      // Find user by email
+      const { data: userRow, error: userErr } = await supabase
+        .from('users')
+        .select('id, email, full_name, role')
+        .eq('email', email)
+        .single()
+      if (userErr || !userRow) {
+        toast.error('User not found')
+        return
+      }
+
+      // Assign via upsert to avoid duplicate errors
+      const { error: enrollErr } = await supabase
+        .from('enrollments')
+        .upsert(
+          [{ user_id: userRow.id, course_id: courseId, progress_percentage: 0 }],
+          { onConflict: 'user_id,course_id', ignoreDuplicates: true }
+        )
+
+      if (enrollErr) throw enrollErr
+      toast.success(`Assigned course to ${email}`)
+    } catch (e) {
+      console.error('Failed to assign course:', e)
+      toast.error('Failed to assign course')
+    }
   }
 
   const resetFilters = () => {
     setSearchTerm('')
-    setSelectedCategory('')
     setSelectedStatus('')
     setSortBy('created_at')
     setSortOrder('desc')
@@ -250,31 +393,15 @@ const AdminCourses: React.FC = () => {
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
-
-          {/* Category Filter */}
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="">All Categories</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-
-          {/* Status Filter */}
+          {/* Published Filter */}
           <select
             value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value as CourseStatus | '')}
+            onChange={(e) => setSelectedStatus(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
-            <option value="">All Statuses</option>
-            <option value="draft">Draft</option>
-            <option value="published">Published</option>
-            <option value="archived">Archived</option>
+            <option value="">All</option>
+            <option value="true">Published</option>
+            <option value="false">Unpublished</option>
           </select>
 
           {/* Sort */}
@@ -283,7 +410,7 @@ const AdminCourses: React.FC = () => {
               value={`${sortBy}-${sortOrder}`}
               onChange={(e) => {
                 const [field, order] = e.target.value.split('-')
-                setSortBy(field as 'title' | 'created_at' | 'price')
+                setSortBy(field as 'title' | 'created_at' | 'difficulty_level')
                 setSortOrder(order as 'asc' | 'desc')
               }}
               className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -292,8 +419,8 @@ const AdminCourses: React.FC = () => {
               <option value="created_at-asc">Oldest First</option>
               <option value="title-asc">Title A-Z</option>
               <option value="title-desc">Title Z-A</option>
-              <option value="price-desc">Price High-Low</option>
-              <option value="price-asc">Price Low-High</option>
+              <option value="difficulty_level-asc">Difficulty Low-High</option>
+              <option value="difficulty_level-desc">Difficulty High-Low</option>
             </select>
             
             <button
@@ -314,18 +441,18 @@ const AdminCourses: React.FC = () => {
             </span>
             <div className="flex space-x-2">
               <button
-                onClick={() => handleBulkStatusUpdate('published')}
+                onClick={() => handleBulkStatusUpdate(true)}
                 className="flex items-center px-3 py-1.5 text-sm bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
               >
                 <Globe className="h-4 w-4 mr-1" />
                 Publish
               </button>
               <button
-                onClick={() => handleBulkStatusUpdate('archived')}
+                onClick={() => handleBulkStatusUpdate(false)}
                 className="flex items-center px-3 py-1.5 text-sm bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition-colors"
               >
-                <Archive className="h-4 w-4 mr-1" />
-                Archive
+                <FileText className="h-4 w-4 mr-1" />
+                Unpublish
               </button>
               <button
                 onClick={handleBulkDelete}
@@ -360,8 +487,9 @@ const AdminCourses: React.FC = () => {
         onSelectCourse={handleSelectCourse}
         onSelectAll={handleSelectAll}
         onEditCourse={handleEditCourse}
-        onDeleteCourse={handleDeleteCourse}
+        onDeleteCourse={handleDelete}
         onViewCourse={handleViewCourse}
+        onAssignCourse={handleAssignCourse}
         loading={loading}
       />
 
@@ -416,8 +544,15 @@ const AdminCourses: React.FC = () => {
         isOpen={showForm}
         onClose={closeForm}
         onSubmit={editingCourse ? handleUpdateCourse : handleCreateCourse}
-        initialData={editingCourse || undefined}
-        categories={categories}
+        initialData={editingCourse ? {
+          title: editingCourse.title,
+          description: editingCourse.description,
+          duration_hours: editingCourse.duration_hours,
+          difficulty_level: editingCourse.difficulty_level,
+          instructor_id: editingCourse.instructor_id,
+          is_published: editingCourse.is_published,
+          thumbnail_url: editingCourse.thumbnail_url
+        } : undefined}
         instructors={instructors}
         loading={formLoading}
         title={editingCourse ? 'Edit Course' : 'Create New Course'}

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase, Course } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { Clock, Users, Star, Play, FileText, Cuboid as Cube, CheckCircle, ArrowLeft } from 'lucide-react'
+import { Clock, Users, Play, FileText, Cuboid as Cube, CheckCircle, ArrowLeft } from 'lucide-react'
 import VideoPlayer from '../components/VideoPlayer'
 import Assessment from '../components/Assessment'
 import TrainSimulation from '../components/TrainSimulation'
@@ -12,34 +12,105 @@ const CourseDetail: React.FC = () => {
   const { user } = useAuth()
   const [course, setCourse] = useState<Course | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeSection, setActiveSection] = useState<'video' | 'assessment' | 'simulation'>('video')
   const [enrolled, setEnrolled] = useState(false)
+  const [modules, setModules] = useState<Array<{ id: string; title: string; order: number }>>([])
+  type Lesson = { id: string; title: string; duration_minutes: number; order: number; type: 'video' | 'assessment' | 'simulation' };
+  const [lessonsByModule, setLessonsByModule] = useState<Record<string, Array<Lesson>>>({})
+  const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null)
 
   useEffect(() => {
-    // Mock course data - replace with actual Supabase query
-    const mockCourse: Course = {
-      id: courseId || '1',
-      title: 'Railway Operations Fundamentals',
-      description: 'Learn the basics of railway operations, safety protocols, and operational procedures. This comprehensive course covers everything from basic train operation to advanced safety systems.',
-      thumbnail_url: 'https://images.pexels.com/photos/544966/pexels-photo-544966.jpeg?auto=compress&cs=tinysrgb&w=1200',
-      duration_hours: 12,
-      difficulty_level: 'beginner',
-      instructor_name: 'Sarah Johnson',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+    const loadData = async () => {
+      try {
+        setLoading(true)
+        if (!courseId) return
+
+        // 1) Fetch course
+        const { data: courseRow, error: courseErr } = await supabase
+          .from('courses')
+          .select('id, title, description, thumbnail_url, duration_hours, difficulty_level, instructor_id, instructor_name')
+          .eq('id', courseId)
+          .single()
+        if (courseErr) throw courseErr
+        setCourse(courseRow as Course)
+
+        // 2) Instructor name is denormalized in courseRow.instructor_name
+
+        // 3) Check enrollment for current user
+        if (user) {
+          const { data: enrollRow, error: enrollErr } = await supabase
+            .from('enrollments')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('course_id', courseId)
+            .maybeSingle()
+          if (!enrollErr && enrollRow) setEnrolled(true)
+          else setEnrolled(false)
+        } else {
+          setEnrolled(false)
+        }
+
+        // 4) Fetch modules and lessons
+        const { data: mods, error: modsErr } = await supabase
+          .from('course_modules')
+          .select('id, title, "order"')
+          .eq('course_id', courseId)
+          .order('order', { ascending: true })
+        if (modsErr) throw modsErr
+        const normalizedModules = (mods || []).map(m => ({ id: m.id, title: m.title, order: m.order }))
+        setModules(normalizedModules)
+
+        if (normalizedModules.length) {
+          const moduleIds = normalizedModules.map(m => m.id);
+          const { data: lessons, error: lessonsErr } = await supabase
+            .from('lessons')
+            .select('id, module_id, title, duration_minutes, "order", type')
+            .in('module_id', moduleIds)
+            .order('order', { ascending: true });
+          if (lessonsErr) throw lessonsErr;
+
+          const grouped: Record<string, Array<Lesson>> = {};
+          for (const l of lessons || []) {
+            if (!grouped[l.module_id]) grouped[l.module_id] = [];
+            grouped[l.module_id].push({ 
+              id: l.id, 
+              title: l.title, 
+              duration_minutes: l.duration_minutes || 0, 
+              order: l.order, 
+              type: l.type 
+            });
+          }
+          setLessonsByModule(grouped);
+
+          // Set the first lesson as the selected one by default
+          if (lessons && lessons.length > 0) {
+            const firstModuleId = normalizedModules[0].id;
+            if (grouped[firstModuleId] && grouped[firstModuleId].length > 0) {
+              setSelectedLesson(grouped[firstModuleId][0]);
+            }
+          }
+        } else {
+          setLessonsByModule({});
+        }
+      } catch (e) {
+        console.error('Failed to load course detail:', e)
+      } finally {
+        setLoading(false)
+      }
     }
 
-    setTimeout(() => {
-      setCourse(mockCourse)
-      setEnrolled(!!user) // Auto-enroll if user is logged in for demo
-      setLoading(false)
-    }, 500)
+    loadData()
   }, [courseId, user])
 
-  const handleEnroll = () => {
-    if (user) {
+  const handleEnroll = async () => {
+    if (!user || !courseId) return
+    try {
+      const { error } = await supabase
+        .from('enrollments')
+        .insert([{ user_id: user.id, course_id: courseId, progress_percentage: 0 }])
+      if (error) throw error
       setEnrolled(true)
-      // TODO: Implement actual enrollment logic with Supabase
+    } catch (e) {
+      console.error('Failed to enroll:', e)
     }
   }
 
@@ -130,64 +201,26 @@ const CourseDetail: React.FC = () => {
                 <div className="flex items-center text-sm text-gray-500 mb-6 space-x-6">
                   <div className="flex items-center">
                     <Users className="h-4 w-4 mr-1" />
-                    <span>{course.instructor_name}</span>
+                    <span>{(course as any).instructor_name || 'Instructor'}</span>
                   </div>
                   <div className="flex items-center">
                     <Clock className="h-4 w-4 mr-1" />
                     <span>{course.duration_hours} hours</span>
                   </div>
-                  <div className="flex items-center">
-                    <Star className="h-4 w-4 text-yellow-400 fill-current mr-1" />
-                    <span>4.8 (234 reviews)</span>
-                  </div>
                 </div>
 
                 {enrolled ? (
-                  <>
-                    {/* Section Navigation */}
-                    <div className="flex border-b border-gray-200 mb-6">
-                      <button
-                        onClick={() => setActiveSection('video')}
-                        className={`flex items-center px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                          activeSection === 'video'
-                            ? 'border-blue-600 text-blue-600'
-                            : 'border-transparent text-gray-500 hover:text-gray-700'
-                        }`}
-                      >
-                        <Play className="h-4 w-4 mr-2" />
-                        Video Training
-                      </button>
-                      <button
-                        onClick={() => setActiveSection('assessment')}
-                        className={`flex items-center px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                          activeSection === 'assessment'
-                            ? 'border-blue-600 text-blue-600'
-                            : 'border-transparent text-gray-500 hover:text-gray-700'
-                        }`}
-                      >
-                        <FileText className="h-4 w-4 mr-2" />
-                        Assessment
-                      </button>
-                      <button
-                        onClick={() => setActiveSection('simulation')}
-                        className={`flex items-center px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                          activeSection === 'simulation'
-                            ? 'border-blue-600 text-blue-600'
-                            : 'border-transparent text-gray-500 hover:text-gray-700'
-                        }`}
-                      >
-                        <Cube className="h-4 w-4 mr-2" />
-                        3D Simulation
-                      </button>
-                    </div>
-
-                    {/* Active Section Content */}
-                    <div className="mt-6">
-                      {activeSection === 'video' && <VideoPlayer courseId={course.id} />}
-                      {activeSection === 'assessment' && <Assessment courseId={course.id} />}
-                      {activeSection === 'simulation' && <TrainSimulation courseId={course.id} />}
-                    </div>
-                  </>
+                  <div className="mt-6">
+                    {!selectedLesson && (
+                      <div className="text-center py-12">
+                        <h3 className="text-xl font-semibold text-gray-700">Select a lesson to begin</h3>
+                        <p className="text-gray-500 mt-2">Choose a lesson from the course content list to start learning.</p>
+                      </div>
+                    )}
+                    {selectedLesson?.type === 'video' && <VideoPlayer courseId={course.id} lessonId={selectedLesson.id} />}
+                    {selectedLesson?.type === 'assessment' && <Assessment courseId={course.id} lessonId={selectedLesson.id} />}
+                    {selectedLesson?.type === 'simulation' && <TrainSimulation courseId={course.id} />}
+                  </div>
                 ) : (
                   <div className="text-center py-8">
                     <h3 className="text-xl font-semibold text-gray-900 mb-4">
@@ -222,34 +255,32 @@ const CourseDetail: React.FC = () => {
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sticky top-24">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Course Content</h3>
               <div className="space-y-3">
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <div className="flex items-center">
-                    <Play className="h-4 w-4 text-blue-600 mr-2" />
-                    <span className="text-sm text-gray-700">Introduction to Railways</span>
+                {modules.map((m) => (
+                  <div key={m.id} className="">
+                    <div className="text-sm font-semibold text-gray-800 mb-2">{m.title}</div>
+                    {(lessonsByModule[m.id] || []).map((l) => {
+                      const isSelected = selectedLesson?.id === l.id;
+                      const Icon = l.type === 'assessment' ? FileText : l.type === 'simulation' ? Cube : Play;
+                      return (
+                        <button 
+                          key={l.id} 
+                          onClick={() => setSelectedLesson(l)}
+                          className={`w-full flex items-center justify-between py-2 px-3 rounded-md transition-colors ${
+                            isSelected ? 'bg-blue-100' : 'hover:bg-gray-100'
+                          }`}>
+                          <div className="flex items-center">
+                            <Icon className={`h-4 w-4 mr-3 flex-shrink-0 ${isSelected ? 'text-blue-600' : 'text-gray-500'}`} />
+                            <span className={`text-sm ${isSelected ? 'text-blue-700 font-semibold' : 'text-gray-700'}`}>{l.title}</span>
+                          </div>
+                          <span className="text-xs text-gray-500">{l.duration_minutes || 0} min</span>
+                        </button>
+                      )
+                    })}
                   </div>
-                  <span className="text-xs text-gray-500">15 min</span>
-                </div>
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <div className="flex items-center">
-                    <Play className="h-4 w-4 text-blue-600 mr-2" />
-                    <span className="text-sm text-gray-700">Safety Protocols</span>
-                  </div>
-                  <span className="text-xs text-gray-500">22 min</span>
-                </div>
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <div className="flex items-center">
-                    <FileText className="h-4 w-4 text-green-600 mr-2" />
-                    <span className="text-sm text-gray-700">Quiz: Basic Knowledge</span>
-                  </div>
-                  <span className="text-xs text-gray-500">10 min</span>
-                </div>
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <div className="flex items-center">
-                    <Cube className="h-4 w-4 text-purple-600 mr-2" />
-                    <span className="text-sm text-gray-700">Train Controls Simulation</span>
-                  </div>
-                  <span className="text-xs text-gray-500">30 min</span>
-                </div>
+                ))}
+                {modules.length === 0 && (
+                  <div className="text-sm text-gray-500">No content available yet.</div>
+                )}
               </div>
             </div>
           </div>

@@ -1,77 +1,97 @@
-import React, { useState } from 'react'
-import { CheckCircle, XCircle, RotateCcw, Award } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../contexts/AuthContext'
+import { RotateCcw, Award } from 'lucide-react'
+import {
+  getAssessmentByLesson,
+  getQuestions,
+  getOptionsForQuestions,
+} from '../services/supabase/assessments'
+
+interface Option {
+  id: string;
+  text: string;
+}
 
 interface Question {
-  id: number
-  question: string
-  options: string[]
-  correctAnswer: number
-  explanation: string
+  id: string;
+  text: string;
+  options: Option[];
 }
 
 interface AssessmentProps {
-  courseId: string
+  courseId: string;
+  lessonId: string;
 }
 
-const Assessment: React.FC<AssessmentProps> = ({ courseId }) => {
-  const [currentQuestion, setCurrentQuestion] = useState(0)
-  const [selectedAnswers, setSelectedAnswers] = useState<number[]>([])
-  const [showResults, setShowResults] = useState(false)
-  const [quizCompleted, setQuizCompleted] = useState(false)
+const Assessment: React.FC<AssessmentProps> = ({ courseId, lessonId }) => {
+  const { user } = useAuth();
+  const [assessmentId, setAssessmentId] = useState<string | null>(null);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>({}); // questionId -> optionId
+  const [showResults, setShowResults] = useState(false);
+  const [results, setResults] = useState<{ score: number, passed: boolean } | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const questions: Question[] = [
-    {
-      id: 1,
-      question: "What is the primary safety protocol when approaching a railway crossing?",
-      options: [
-        "Sound the horn continuously",
-        "Reduce speed and check for visibility",
-        "Maintain current speed",
-        "Stop completely before crossing"
-      ],
-      correctAnswer: 1,
-      explanation: "Reducing speed and checking for visibility ensures safe passage while maintaining operational efficiency."
-    },
-    {
-      id: 2,
-      question: "Which communication system is most critical for train operations?",
-      options: [
-        "Public address system",
-        "Radio communication with control center",
-        "Mobile phone network",
-        "Email system"
-      ],
-      correctAnswer: 1,
-      explanation: "Radio communication with the control center is essential for real-time coordination and safety updates."
-    },
-    {
-      id: 3,
-      question: "How often should brake systems be inspected?",
-      options: [
-        "Once a month",
-        "Before every trip",
-        "Once a week",
-        "Only when problems occur"
-      ],
-      correctAnswer: 1,
-      explanation: "Brake systems must be inspected before every trip to ensure passenger safety and operational reliability."
+  useEffect(() => {
+    const loadAssessment = async () => {
+      if (!lessonId) return;
+      try {
+        setLoading(true);
+        const assessment = await getAssessmentByLesson(lessonId)
+        if (!assessment) {
+          setAssessmentId(null)
+          setQuestions([])
+          return
+        }
+        setAssessmentId(assessment.id)
+        const qs = await getQuestions(assessment.id)
+        const ids = qs.map((q: any) => q.id)
+        const opts = await getOptionsForQuestions(ids)
+        const grouped: Record<string, any[]> = {}
+        for (const o of opts) {
+          grouped[o.question_id] = grouped[o.question_id] || []
+          grouped[o.question_id].push(o)
+        }
+        const mapped = qs.map((q: any) => ({
+          id: q.id,
+          text: q.prompt,
+          options: (grouped[q.id] || []).map((o: any) => ({ id: o.id, text: o.option_text })),
+        }))
+        setQuestions(mapped)
+      } catch (err) {
+        console.error('Error loading assessment:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadAssessment();
+  }, [lessonId]);
+
+  const handleAnswerSelect = (questionId: string, optionId: string) => {
+    setSelectedAnswers(prev => ({ ...prev, [questionId]: optionId }));
+  };
+
+  const handleSubmit = async () => {
+    if (!assessmentId || !user) return;
+
+    const answers = Object.entries(selectedAnswers).map(([questionId, selectedOptionId]) => ({
+      questionId,
+      selectedOptionId
+    }));
+
+    try {
+      const { data, error } = await supabase.functions.invoke('submitAssessment', {
+        body: { assessmentId, answers, userId: user.id },
+      });
+      if (error) throw error;
+      setResults(data);
+      setShowResults(true);
+    } catch (err) {
+      console.error('Error submitting assessment:', err);
     }
-  ]
-
-  const handleAnswerSelect = (answerIndex: number) => {
-    const newAnswers = [...selectedAnswers]
-    newAnswers[currentQuestion] = answerIndex
-    setSelectedAnswers(newAnswers)
-  }
-
-  const handleNext = () => {
-    if (currentQuestion < questions.length - 1) {
-      setCurrentQuestion(currentQuestion + 1)
-    } else {
-      setShowResults(true)
-      setQuizCompleted(true)
-    }
-  }
+  };
 
   const handlePrevious = () => {
     if (currentQuestion > 0) {
@@ -80,21 +100,11 @@ const Assessment: React.FC<AssessmentProps> = ({ courseId }) => {
   }
 
   const restartQuiz = () => {
-    setCurrentQuestion(0)
-    setSelectedAnswers([])
-    setShowResults(false)
-    setQuizCompleted(false)
-  }
-
-  const calculateScore = () => {
-    let correct = 0
-    questions.forEach((question, index) => {
-      if (selectedAnswers[index] === question.correctAnswer) {
-        correct++
-      }
-    })
-    return (correct / questions.length) * 100
-  }
+    setCurrentQuestion(0);
+    setSelectedAnswers({});
+    setShowResults(false);
+    setResults(null);
+  };
 
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'text-green-600'
@@ -102,8 +112,12 @@ const Assessment: React.FC<AssessmentProps> = ({ courseId }) => {
     return 'text-red-600'
   }
 
-  if (showResults) {
-    const score = calculateScore()
+  if (loading) {
+    return <div className="text-center p-8">Loading assessment...</div>;
+  }
+
+  if (showResults && results) {
+    const { score, passed } = results;
     return (
       <div className="bg-white rounded-lg border border-gray-200 p-8">
         <div className="text-center mb-8">
@@ -118,40 +132,8 @@ const Assessment: React.FC<AssessmentProps> = ({ courseId }) => {
             {score.toFixed(0)}%
           </div>
           <p className="text-gray-600">
-            {selectedAnswers.filter((answer, index) => answer === questions[index].correctAnswer).length} out of {questions.length} correct
+            You {passed ? 'passed' : 'did not pass'} this assessment.
           </p>
-        </div>
-
-        <div className="space-y-6 mb-8">
-          <h3 className="text-lg font-semibold text-gray-900">Review Your Answers</h3>
-          {questions.map((question, index) => {
-            const isCorrect = selectedAnswers[index] === question.correctAnswer
-            return (
-              <div key={question.id} className="border border-gray-200 rounded-lg p-4">
-                <div className="flex items-start space-x-3 mb-3">
-                  {isCorrect ? (
-                    <CheckCircle className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
-                  ) : (
-                    <XCircle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
-                  )}
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900 mb-2">{question.question}</p>
-                    <div className="space-y-1 text-sm">
-                      <p className={`${isCorrect ? 'text-green-700' : 'text-red-700'}`}>
-                        Your answer: {question.options[selectedAnswers[index]]}
-                      </p>
-                      {!isCorrect && (
-                        <p className="text-green-700">
-                          Correct answer: {question.options[question.correctAnswer]}
-                        </p>
-                      )}
-                    </div>
-                    <p className="text-gray-600 text-sm mt-2 italic">{question.explanation}</p>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
         </div>
 
         <div className="flex justify-center space-x-4">
@@ -162,19 +144,17 @@ const Assessment: React.FC<AssessmentProps> = ({ courseId }) => {
             <RotateCcw className="h-4 w-4 mr-2" />
             Retake Quiz
           </button>
-          {score >= 80 && (
-            <button className="flex items-center px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
-              <Award className="h-4 w-4 mr-2" />
-              View Certificate
-            </button>
-          )}
         </div>
       </div>
     )
   }
 
-  const question = questions[currentQuestion]
-  const progress = ((currentQuestion + 1) / questions.length) * 100
+  if (!questions.length) {
+    return <div className="text-center p-8">No questions found for this assessment.</div>;
+  }
+
+  const question = questions[currentQuestion];
+  const progress = ((currentQuestion + 1) / questions.length) * 100;
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-8">
@@ -196,14 +176,14 @@ const Assessment: React.FC<AssessmentProps> = ({ courseId }) => {
 
       {/* Question */}
       <div className="mb-8">
-        <h3 className="text-lg font-medium text-gray-900 mb-6">{question.question}</h3>
-        
+        <h3 className="text-lg font-medium text-gray-900 mb-6">{question.text}</h3>
+
         <div className="space-y-3">
-          {question.options.map((option, index) => (
+          {question.options.map(option => (
             <label
-              key={index}
+              key={option.id}
               className={`block p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 ${
-                selectedAnswers[currentQuestion] === index
+                selectedAnswers[question.id] === option.id
                   ? 'border-blue-600 bg-blue-50'
                   : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
               }`}
@@ -211,13 +191,13 @@ const Assessment: React.FC<AssessmentProps> = ({ courseId }) => {
               <div className="flex items-center">
                 <input
                   type="radio"
-                  name={`question-${currentQuestion}`}
-                  value={index}
-                  checked={selectedAnswers[currentQuestion] === index}
-                  onChange={() => handleAnswerSelect(index)}
+                  name={`question-${question.id}`}
+                  value={option.id}
+                  checked={selectedAnswers[question.id] === option.id}
+                  onChange={() => handleAnswerSelect(question.id, option.id)}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
                 />
-                <span className="ml-3 text-gray-900">{option}</span>
+                <span className="ml-3 text-gray-900">{option.text}</span>
               </div>
             </label>
           ))}
@@ -235,8 +215,8 @@ const Assessment: React.FC<AssessmentProps> = ({ courseId }) => {
         </button>
 
         <button
-          onClick={handleNext}
-          disabled={selectedAnswers[currentQuestion] === undefined}
+          onClick={currentQuestion === questions.length - 1 ? handleSubmit : () => setCurrentQuestion(currentQuestion + 1)}
+          disabled={!selectedAnswers[question.id]}
           className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {currentQuestion === questions.length - 1 ? 'Finish Quiz' : 'Next Question'}

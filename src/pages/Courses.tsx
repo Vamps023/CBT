@@ -1,66 +1,75 @@
 import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase, Course } from '../lib/supabase'
-import { Clock, Users, Star, BookOpen } from 'lucide-react'
+import { Clock, Users, BookOpen, AlertCircle } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
+
+interface CourseWithInstructor extends Course {}
 
 const Courses: React.FC = () => {
-  const [courses, setCourses] = useState<Course[]>([])
+  const [courses, setCourses] = useState<CourseWithInstructor[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const { user } = useAuth()
 
   useEffect(() => {
-    // Mock data for now - replace with actual Supabase query once database is set up
-    const mockCourses: Course[] = [
-      {
-        id: '1',
-        title: 'Railway Operations Fundamentals',
-        description: 'Learn the basics of railway operations, safety protocols, and operational procedures.',
-        thumbnail_url: 'https://images.pexels.com/photos/544966/pexels-photo-544966.jpeg?auto=compress&cs=tinysrgb&w=800',
-        duration_hours: 12,
-        difficulty_level: 'beginner',
-        instructor_name: 'Sarah Johnson',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      {
-        id: '2',
-        title: 'Advanced Train Control Systems',
-        description: 'Master modern train control systems including ETCS, CBTC, and automated train operation.',
-        thumbnail_url: 'https://images.pexels.com/photos/2026324/pexels-photo-2026324.jpeg?auto=compress&cs=tinysrgb&w=800',
-        duration_hours: 18,
-        difficulty_level: 'advanced',
-        instructor_name: 'Michael Chen',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      {
-        id: '3',
-        title: 'Signal Systems and Safety',
-        description: 'Comprehensive training on railway signaling systems, safety protocols, and emergency procedures.',
-        thumbnail_url: 'https://images.pexels.com/photos/3802510/pexels-photo-3802510.jpeg?auto=compress&cs=tinysrgb&w=800',
-        duration_hours: 15,
-        difficulty_level: 'intermediate',
-        instructor_name: 'Emma Rodriguez',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      {
-        id: '4',
-        title: 'Locomotive Operation & Maintenance',
-        description: 'Hands-on training for locomotive operation, maintenance procedures, and troubleshooting.',
-        thumbnail_url: 'https://images.pexels.com/photos/2657659/pexels-photo-2657659.jpeg?auto=compress&cs=tinysrgb&w=800',
-        duration_hours: 24,
-        difficulty_level: 'intermediate',
-        instructor_name: 'David Thompson',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-    ]
+    const fetchCourses = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        
+        if (user) {
+          // Logged-in student: show only enrolled courses
+          const { data, error: enrollErr } = await supabase
+            .from('enrollments')
+            .select(`
+              course:courses!enrollments_course_id_fkey (
+                id,
+                title,
+                description,
+                thumbnail_url,
+                duration_hours,
+                difficulty_level,
+                instructor_name
+              )
+            `)
+            .eq('user_id', user.id)
+          if (enrollErr) throw enrollErr
+          const mapped: CourseWithInstructor[] = (data || [])
+            .map((row: any) => row.course)
+            .filter(Boolean)
+          if (mapped.length > 0) {
+            setCourses(mapped)
+          } else {
+            // Fallback: show published catalog so students can browse and enroll
+            const { data: coursesData, error: coursesError } = await supabase
+              .from('courses')
+              .select('*')
+              .eq('is_published', true)
+              .order('created_at', { ascending: false })
+            if (coursesError) throw coursesError
+            setCourses((coursesData as CourseWithInstructor[]) || [])
+          }
+        } else {
+          // Guest: show published catalog
+          const { data: coursesData, error: coursesError } = await supabase
+            .from('courses')
+            .select('*')
+            .eq('is_published', true)
+            .order('created_at', { ascending: false })
+          if (coursesError) throw coursesError
+          setCourses((coursesData as CourseWithInstructor[]) || [])
+        }
+      } catch (err) {
+        console.error('Error fetching courses:', err)
+        setError('Failed to load courses. Please try again later.')
+      } finally {
+        setLoading(false)
+      }
+    }
 
-    setTimeout(() => {
-      setCourses(mockCourses)
-      setLoading(false)
-    }, 500)
-  }, [])
+    fetchCourses()
+  }, [user])
 
   const getDifficultyColor = (level: string) => {
     switch (level) {
@@ -94,6 +103,36 @@ const Courses: React.FC = () => {
               </div>
             ))}
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 pt-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="bg-red-50 border-l-4 border-red-400 p-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <AlertCircle className="h-5 w-5 text-red-400" aria-hidden="true" />
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (courses.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50 pt-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-2xl font-semibold text-gray-900">No courses available</h2>
+          <p className="mt-2 text-gray-600">Check back later for new courses or contact support if you believe this is an error.</p>
         </div>
       </div>
     )
@@ -145,10 +184,7 @@ const Courses: React.FC = () => {
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                    <span className="text-sm text-gray-600 ml-1">4.8 (234 reviews)</span>
-                  </div>
+                  <div />
                   <div className="flex items-center text-blue-600">
                     <BookOpen className="h-4 w-4 mr-1" />
                     <span className="text-sm font-medium">View Course</span>

@@ -12,7 +12,9 @@ export type Course = {
   thumbnail_url: string
   duration_hours: number
   difficulty_level: 'beginner' | 'intermediate' | 'advanced'
-  instructor_name: string
+  instructor_id: string  // Reference to users.id
+  instructor_name?: string | null
+  is_published: boolean
   created_at: string
   updated_at: string
 }

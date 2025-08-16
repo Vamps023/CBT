@@ -1,33 +1,88 @@
 import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { supabase } from '../lib/supabase'
 import { BookOpen, Award, Clock, TrendingUp, Play, CheckCircle } from 'lucide-react'
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth()
-  const [enrolledCourses, setEnrolledCourses] = useState([
-    {
-      id: '1',
-      title: 'Railway Operations Fundamentals',
-      progress: 75,
-      thumbnail_url: 'https://images.pexels.com/photos/544966/pexels-photo-544966.jpeg?auto=compress&cs=tinysrgb&w=400',
-      lastAccessed: '2 hours ago',
-    },
-    {
-      id: '2',
-      title: 'Advanced Train Control Systems',
-      progress: 30,
-      thumbnail_url: 'https://images.pexels.com/photos/2026324/pexels-photo-2026324.jpeg?auto=compress&cs=tinysrgb&w=400',
-      lastAccessed: '1 day ago',
-    },
-  ])
+  const [loading, setLoading] = useState(true)
+  const [enrolledCourses, setEnrolledCourses] = useState<Array<{
+    id: string
+    title: string
+    thumbnail_url: string | null
+    progress_percentage: number
+  }>>([])
+  const [stats, setStats] = useState({
+    coursesEnrolled: 0,
+    coursesCompleted: 0,
+    totalHours: 0,
+    certificates: 0,
+  })
 
-  const stats = {
-    coursesEnrolled: 2,
-    coursesCompleted: 1,
-    totalHours: 18,
-    certificates: 1,
+  const loadEnrollments = async () => {
+    try {
+      setLoading(true)
+      if (!user) return
+      // Fetch enrollments for this user joined with course info
+      const { data, error } = await supabase
+        .from('enrollments')
+        .select(`
+          progress_percentage,
+          course:courses!enrollments_course_id_fkey (
+            id,
+            title,
+            thumbnail_url,
+            duration_hours
+          )
+        `)
+        .eq('user_id', user.id)
+
+      if (error) throw error
+
+      const items = (data || []).map((row: any) => ({
+        id: row.course.id,
+        title: row.course.title,
+        thumbnail_url: row.course.thumbnail_url,
+        progress_percentage: row.progress_percentage ?? 0,
+        duration_hours: row.course.duration_hours ?? 0,
+      }))
+
+      setEnrolledCourses(items)
+
+      // Compute basic stats
+      const coursesEnrolled = items.length
+      const coursesCompleted = items.filter(i => i.progress_percentage >= 100).length
+      const totalHours = items.reduce((sum, i: any) => sum + (i.duration_hours || 0), 0)
+      setStats({ coursesEnrolled, coursesCompleted, totalHours, certificates: coursesCompleted })
+    } catch (e) {
+      console.error('Failed to load enrollments:', e)
+    } finally {
+      setLoading(false)
+    }
   }
+
+  useEffect(() => {
+    loadEnrollments()
+  }, [user])
+
+  useEffect(() => {
+    if (!user) return
+    const channel = supabase
+      .channel('enrollments-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'enrollments', filter: `user_id=eq.${user.id}` },
+        () => {
+          loadEnrollments()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user])
 
   return (
     <div className="min-h-screen bg-gray-50 pt-20">
@@ -103,11 +158,17 @@ const Dashboard: React.FC = () => {
               </div>
 
               <div className="space-y-4">
+                {loading && (
+                  <div className="text-gray-500 text-sm">Loading...</div>
+                )}
+                {!loading && enrolledCourses.length === 0 && (
+                  <div className="text-gray-500 text-sm">You are not enrolled in any courses yet.</div>
+                )}
                 {enrolledCourses.map((course) => (
                   <div key={course.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow">
                     <div className="flex items-start space-x-4">
                       <img
-                        src={course.thumbnail_url}
+                        src={course.thumbnail_url || 'https://via.placeholder.com/160x160?text=Course'}
                         alt={course.title}
                         className="w-20 h-20 rounded-lg object-cover flex-shrink-0"
                       />
@@ -115,18 +176,18 @@ const Dashboard: React.FC = () => {
                         <h3 className="text-lg font-medium text-gray-900 mb-2">{course.title}</h3>
                         <div className="flex items-center text-sm text-gray-500 mb-3">
                           <Clock className="h-4 w-4 mr-1" />
-                          <span>Last accessed {course.lastAccessed}</span>
+                          <span>Progress tracking</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <div className="flex-1 mr-4">
                             <div className="flex items-center justify-between text-sm mb-1">
                               <span className="text-gray-600">Progress</span>
-                              <span className="font-medium">{course.progress}%</span>
+                              <span className="font-medium">{course.progress_percentage}%</span>
                             </div>
                             <div className="w-full bg-gray-200 rounded-full h-2">
                               <div
                                 className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                                style={{ width: `${course.progress}%` }}
+                                style={{ width: `${course.progress_percentage}%` }}
                               ></div>
                             </div>
                           </div>

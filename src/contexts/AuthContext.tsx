@@ -6,9 +6,13 @@ interface AuthContextType {
   user: User | null
   session: Session | null
   loading: boolean
+  role: 'admin' | 'instructor' | 'student' | null
+  isAdmin: boolean
+  isInstructor: boolean
   signUp: (email: string, password: string, fullName: string) => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
+  refreshProfile: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -25,6 +29,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+  const [role, setRole] = useState<AuthContextType['role']>(null)
 
   useEffect(() => {
     // Get initial session
@@ -45,6 +50,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => subscription.unsubscribe()
   }, [])
+
+  useEffect(() => {
+    const loadRole = async () => {
+      if (!user) {
+        setRole(null)
+        return
+      }
+      const { data, error } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+      if (!error) {
+        setRole((data?.role as any) ?? null)
+      } else {
+        setRole(null)
+      }
+    }
+    loadRole()
+  }, [user])
 
   const signUp = async (email: string, password: string, fullName: string) => {
     const { error } = await supabase.auth.signUp({
@@ -72,13 +97,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (error) throw error
   }
 
+  const refreshProfile = async () => {
+    if (!user) return
+    const { data, error } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+    if (!error) {
+      setRole((data?.role as any) ?? null)
+    }
+  }
+
   const value = {
     user,
     session,
     loading,
+    role,
+    isAdmin: role === 'admin',
+    isInstructor: role === 'instructor',
     signUp,
     signIn,
     signOut,
+    refreshProfile,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react'
-import { BookOpen, Users, DollarSign, TrendingUp, Eye, Clock } from 'lucide-react'
-import { courseService, AdminCourse } from '../../lib/supabase-admin'
+import { BookOpen, Users, TrendingUp, Clock } from 'lucide-react'
+import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 
 const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState({
     totalCourses: 0,
     publishedCourses: 0,
-    totalRevenue: 0,
+    totalStudents: 0,
     totalEnrollments: 0
   })
-  const [recentCourses, setRecentCourses] = useState<AdminCourse[]>([])
+  const [recentCourses, setRecentCourses] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -20,25 +20,59 @@ const AdminDashboard: React.FC = () => {
   const loadDashboardData = async () => {
     try {
       setLoading(true)
-      
+
       // Get all courses for stats
-      const { courses } = await courseService.getCourses({ limit: 100 })
-      
+      const { data: courses, error: coursesError } = await supabase
+        .from('courses')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(5)
+
+      if (coursesError) throw coursesError
+
+      // Get total students count
+      const { count: studentCount, error: studentError } = await supabase
+        .from('users')
+        .select('*', { count: 'exact', head: true })
+        .eq('role', 'student')
+
+      if (studentError) throw studentError
+
+      // Get total enrollments
+      const { count: enrollmentCount, error: enrollmentError } = await supabase
+        .from('enrollments')
+        .select('*', { count: 'exact', head: true })
+
+      if (enrollmentError) throw enrollmentError
+
       // Calculate stats
-      const totalCourses = courses.length
-      const publishedCourses = courses.filter(c => c.status === 'published').length
-      const totalRevenue = courses.reduce((sum, course) => sum + course.price, 0)
-      
+      const totalCourses = courses?.length || 0
+      const publishedCourses = courses?.filter(c => c.is_published).length || 0
+
       setStats({
         totalCourses,
         publishedCourses,
-        totalRevenue,
-        totalEnrollments: Math.floor(Math.random() * 500) + 100 // Mock data
+        totalStudents: studentCount || 0,
+        totalEnrollments: enrollmentCount || 0
       })
-      
-      // Get recent courses (last 5)
-      setRecentCourses(courses.slice(0, 5))
-      
+
+      // Get instructor names for recent courses
+      if (courses && courses.length > 0) {
+        const courseWithInstructors = await Promise.all(courses.map(async (course) => {
+          const { data: instructor } = await supabase
+            .from('users')
+            .select('full_name')
+            .eq('id', course.instructor_id)
+            .single()
+
+          return {
+            ...course,
+            instructor_name: instructor?.full_name || 'Unknown Instructor'
+          }
+        }))
+
+        setRecentCourses(courseWithInstructors)
+      }
     } catch (error) {
       console.error('Error loading dashboard data:', error)
       toast.error('Failed to load dashboard data')
@@ -118,7 +152,7 @@ const AdminDashboard: React.FC = () => {
         <div className="bg-white p-6 rounded-lg border border-gray-200">
           <div className="flex items-center">
             <div className="bg-green-100 p-3 rounded-lg">
-              <Eye className="h-6 w-6 text-green-600" />
+              <BookOpen className="h-6 w-6 text-green-600" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Published</p>
@@ -127,14 +161,16 @@ const AdminDashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg border border-gray-200">
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
           <div className="flex items-center">
-            <div className="bg-purple-100 p-3 rounded-lg">
-              <DollarSign className="h-6 w-6 text-purple-600" />
+            <div className="p-3 rounded-full bg-blue-100 text-blue-600">
+              <Users className="h-6 w-6" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Revenue</p>
-              <p className="text-2xl font-bold text-gray-900">{formatCurrency(stats.totalRevenue)}</p>
+              <h3 className="text-sm font-medium text-gray-500">Total Students</h3>
+              <p className="text-2xl font-semibold text-gray-900">
+                {stats.totalStudents.toLocaleString()}
+              </p>
             </div>
           </div>
         </div>
@@ -187,10 +223,16 @@ const AdminDashboard: React.FC = () => {
                       <p className="text-sm font-medium text-gray-900">
                         {formatCurrency(course.price)}
                       </p>
-                      <p className="text-xs text-gray-500 flex items-center">
-                        <Clock className="h-3 w-3 mr-1" />
-                        {course.duration_hours}h
-                      </p>
+                      <div className="flex items-center text-sm text-gray-500">
+                        <div className="flex items-center">
+                          <Clock className="h-4 w-4 mr-1" />
+                          <span>{course.duration_hours} hours</span>
+                        </div>
+                        <div className="ml-4 flex items-center">
+                          <Users className="h-4 w-4 mr-1" />
+                          <span>By {course.instructor_name}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -201,55 +243,6 @@ const AdminDashboard: React.FC = () => {
                 <p className="text-gray-500">No courses created yet</p>
               </div>
             )}
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="bg-white rounded-lg border border-gray-200">
-          <div className="p-6 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">Quick Actions</h2>
-          </div>
-          <div className="p-6">
-            <div className="space-y-4">
-              <a
-                href="/admin/courses"
-                className="flex items-center p-4 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-              >
-                <div className="bg-blue-100 p-2 rounded-lg">
-                  <BookOpen className="h-5 w-5 text-blue-600" />
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-900">Manage Courses</p>
-                  <p className="text-xs text-gray-500">Create, edit, and organize courses</p>
-                </div>
-              </a>
-
-              <a
-                href="/admin/categories"
-                className="flex items-center p-4 bg-green-50 rounded-lg hover:bg-green-100 transition-colors"
-              >
-                <div className="bg-green-100 p-2 rounded-lg">
-                  <TrendingUp className="h-5 w-5 text-green-600" />
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-900">Manage Categories</p>
-                  <p className="text-xs text-gray-500">Organize course categories</p>
-                </div>
-              </a>
-
-              <a
-                href="/admin/instructors"
-                className="flex items-center p-4 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors"
-              >
-                <div className="bg-purple-100 p-2 rounded-lg">
-                  <Users className="h-5 w-5 text-purple-600" />
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-900">Manage Instructors</p>
-                  <p className="text-xs text-gray-500">Add and manage instructors</p>
-                </div>
-              </a>
-            </div>
           </div>
         </div>
       </div>

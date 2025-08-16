@@ -6,20 +6,32 @@ import {
   MoreHorizontal, 
   CheckSquare, 
   Square,
-  Archive,
   Globe,
-  FileText
+  FileText,
+  BookOpen
 } from 'lucide-react'
-import { AdminCourse, CourseStatus } from '../../lib/supabase-admin'
+
+// Local course type aligned with public.courses schema
+type Course = {
+  id: string
+  title: string
+  description: string
+  thumbnail_url?: string
+  duration_hours: number
+  difficulty_level: 'beginner' | 'intermediate' | 'advanced'
+  is_published: boolean
+  created_at: string
+}
 
 interface CourseTableProps {
-  courses: AdminCourse[]
+  courses: Course[]
   selectedCourses: string[]
   onSelectCourse: (courseId: string) => void
   onSelectAll: (selected: boolean) => void
-  onEditCourse: (course: AdminCourse) => void
+  onEditCourse: (course: Course) => void
   onDeleteCourse: (courseId: string) => void
   onViewCourse: (courseId: string) => void
+  onAssignCourse?: (courseId: string) => void
   loading?: boolean
 }
 
@@ -31,6 +43,7 @@ const CourseTable: React.FC<CourseTableProps> = ({
   onEditCourse,
   onDeleteCourse,
   onViewCourse,
+  onAssignCourse,
   loading = false
 }) => {
   const [dropdownOpen, setDropdownOpen] = useState<string | null>(null)
@@ -38,34 +51,16 @@ const CourseTable: React.FC<CourseTableProps> = ({
   const allSelected = courses.length > 0 && selectedCourses.length === courses.length
   const someSelected = selectedCourses.length > 0 && selectedCourses.length < courses.length
 
-  const getStatusBadge = (status: CourseStatus) => {
-    const badges = {
-      draft: 'bg-gray-100 text-gray-800',
-      published: 'bg-green-100 text-green-800',
-      archived: 'bg-red-100 text-red-800'
-    }
-    
-    const icons = {
-      draft: FileText,
-      published: Globe,
-      archived: Archive
-    }
-    
-    const Icon = icons[status]
-    
+  const getPublishedBadge = (isPublished: boolean) => {
+    const cls = isPublished ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+    const Icon = isPublished ? Globe : FileText
+    const text = isPublished ? 'Published' : 'Unpublished'
     return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${badges[status]}`}>
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cls}`}>
         <Icon className="h-3 w-3 mr-1" />
-        {status.charAt(0).toUpperCase() + status.slice(1)}
+        {text}
       </span>
     )
-  }
-
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(price)
   }
 
   const formatDate = (dateString: string) => {
@@ -116,19 +111,13 @@ const CourseTable: React.FC<CourseTableProps> = ({
                 Course
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Category
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Instructor
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Price
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Duration
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
+                Difficulty
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Published
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Created
@@ -172,33 +161,14 @@ const CourseTable: React.FC<CourseTableProps> = ({
                     </div>
                   </div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className="text-sm text-gray-900">
-                    {course.categories?.name || 'No category'}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    {course.instructors?.avatar_url && (
-                      <img
-                        src={course.instructors.avatar_url}
-                        alt={course.instructors.name}
-                        className="h-6 w-6 rounded-full mr-2"
-                      />
-                    )}
-                    <span className="text-sm text-gray-900">
-                      {course.instructors?.name || 'No instructor'}
-                    </span>
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {formatPrice(course.price)}
-                </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                   {course.duration_hours}h
                 </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 capitalize">
+                  {course.difficulty_level}
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  {getStatusBadge(course.status)}
+                  {getPublishedBadge(course.is_published)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {formatDate(course.created_at)}
@@ -235,6 +205,18 @@ const CourseTable: React.FC<CourseTableProps> = ({
                             <Edit className="h-4 w-4 mr-2" />
                             Edit Course
                           </button>
+                          {onAssignCourse && (
+                            <button
+                              onClick={() => {
+                                onAssignCourse(course.id)
+                                setDropdownOpen(null)
+                              }}
+                              className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            >
+                              <BookOpen className="h-4 w-4 mr-2" />
+                              Assign to Student
+                            </button>
+                          )}
                           <button
                             onClick={() => {
                               onDeleteCourse(course.id)
@@ -340,23 +322,13 @@ const CourseTable: React.FC<CourseTableProps> = ({
                 
                 <div className="flex items-center justify-between mt-3">
                   <div className="flex items-center space-x-4 text-xs text-gray-500">
-                    <span>{formatPrice(course.price)}</span>
                     <span>{course.duration_hours}h</span>
-                    <span>{course.categories?.name}</span>
+                    <span className="capitalize">{course.difficulty_level}</span>
                   </div>
-                  {getStatusBadge(course.status)}
+                  {getPublishedBadge(course.is_published)}
                 </div>
                 
                 <div className="flex items-center mt-2 text-xs text-gray-500">
-                  {course.instructors?.avatar_url && (
-                    <img
-                      src={course.instructors.avatar_url}
-                      alt={course.instructors.name}
-                      className="h-4 w-4 rounded-full mr-1"
-                    />
-                  )}
-                  <span>{course.instructors?.name}</span>
-                  <span className="mx-2">•</span>
                   <span>{formatDate(course.created_at)}</span>
                 </div>
               </div>
