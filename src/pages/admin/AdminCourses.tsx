@@ -141,11 +141,10 @@ const AdminCourses: React.FC = () => {
 
   const handleTogglePublish = async (courseId: string, nextPublished: boolean) => {
     try {
-      const { error } = await supabase
-        .from('courses')
-        .update({ is_published: nextPublished, updated_at: new Date().toISOString() })
-        .eq('id', courseId)
-      if (error) throw error
+      const { data, error } = await supabase.functions.invoke('adminCourseOps', {
+        body: { action: 'togglePublish', payload: { courseId, nextPublished } }
+      })
+      if (error || (data && (data as any).error)) throw (error || new Error((data as any).error))
       setCourses(prev => prev.map(c => (c.id === courseId ? { ...c, is_published: nextPublished } : c)))
       toast.success(nextPublished ? 'Course published' : 'Course unpublished')
     } catch (e: any) {
@@ -228,23 +227,19 @@ const AdminCourses: React.FC = () => {
     
     try {
       setFormLoading(true)
-      const { data, error } = await supabase
-        .from('courses')
-        .update({
-          ...courseData,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', editingCourse.id)
-        .select()
-        .single()
+      const { data, error } = await supabase.functions.invoke('adminCourseOps', {
+        body: { action: 'update', payload: { courseId: editingCourse.id, data: courseData } }
+      })
       
-      if (error) {
-        console.error('Supabase update error (courses):', error)
-        throw error
+      if (error || (data && (data as any).error)) {
+        const err = (error || new Error((data as any).error)) as any
+        console.error('Supabase function update error (courses):', err)
+        throw err
       }
       
-      if (data) {
-        setCourses(courses.map(course => course.id === editingCourse.id ? (data as unknown as AdminCourse) : course))
+      if (data && (data as any).course) {
+        const updated = (data as any).course as AdminCourse
+        setCourses(courses.map(course => course.id === editingCourse.id ? updated : course))
       }
       toast.success('Course updated successfully')
     } catch (error: any) {
@@ -260,14 +255,14 @@ const AdminCourses: React.FC = () => {
   const handleDelete = async (courseId: string) => {
     if (window.confirm('Are you sure you want to delete this course?')) {
       try {
-        const { error } = await supabase
-          .from('courses')
-          .delete()
-          .eq('id', courseId)
+        const { data, error } = await supabase.functions.invoke('adminCourseOps', {
+          body: { action: 'delete', payload: { courseId } }
+        })
         
-        if (error) {
-          console.error('Supabase delete error (courses):', error)
-          throw error
+        if (error || (data && (data as any).error)) {
+          const err = (error || new Error((data as any).error)) as any
+          console.error('Supabase function delete error (courses):', err)
+          throw err
         }
         
         setCourses(courses.filter(course => course.id !== courseId))
@@ -286,14 +281,14 @@ const AdminCourses: React.FC = () => {
     if (!confirm(`Are you sure you want to delete ${selectedCourses.length} courses?`)) return
     
     try {
-      const { error } = await supabase
-        .from('courses')
-        .delete()
-        .in('id', selectedCourses)
+      const { data, error } = await supabase.functions.invoke('adminCourseOps', {
+        body: { action: 'bulkDelete', payload: { ids: selectedCourses } }
+      })
       
-      if (error) {
-        console.error('Supabase bulk delete error (courses):', error)
-        throw error
+      if (error || (data && (data as any).error)) {
+        const err = (error || new Error((data as any).error)) as any
+        console.error('Supabase function bulk delete error (courses):', err)
+        throw err
       }
       
       setCourses(courses.filter(course => !selectedCourses.includes(course.id)))
@@ -310,17 +305,14 @@ const AdminCourses: React.FC = () => {
     if (selectedCourses.length === 0) return
     
     try {
-      const { error } = await supabase
-        .from('courses')
-        .update({ 
-          is_published: isPublished,
-          updated_at: new Date().toISOString()
-        })
-        .in('id', selectedCourses)
+      const { data, error } = await supabase.functions.invoke('adminCourseOps', {
+        body: { action: 'bulkPublish', payload: { ids: selectedCourses, is_published: isPublished } }
+      })
       
-      if (error) {
-        console.error('Supabase bulk update error (courses):', error)
-        throw error
+      if (error || (data && (data as any).error)) {
+        const err = (error || new Error((data as any).error)) as any
+        console.error('Supabase function bulk publish error (courses):', err)
+        throw err
       }
       
       setCourses(courses.map(course => selectedCourses.includes(course.id) ? { ...course, is_published: isPublished } : course))

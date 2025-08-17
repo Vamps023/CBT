@@ -1,9 +1,15 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClientOptions } from '@supabase/supabase-js'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || ''
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+const functionsUrl = import.meta.env.VITE_SUPABASE_FUNCTIONS_URL || ''
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+let options: SupabaseClientOptions<'public'> | undefined
+if (functionsUrl) {
+  options = { functions: { url: functionsUrl } } as SupabaseClientOptions<'public'>
+}
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, options)
 
 export type Course = {
   id: string

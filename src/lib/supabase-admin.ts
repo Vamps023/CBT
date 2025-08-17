@@ -1,9 +1,26 @@
 import { createClient } from '@supabase/supabase-js'
 
+/**
+ * WARNING: Do NOT expose or rely on service role keys in client-side bundles.
+ * This file exists for typed helpers but privileged operations MUST be executed
+ * via Supabase Edge Functions or a secure backend. Ensure that
+ * VITE_SUPABASE_SERVICE_ROLE_KEY is NOT set in your client environment.
+ *
+ * Use functions like `supabase.functions.invoke('adminCourseOps', ...)` for admin
+ * mutations. Keep this client limited to anon or user-level operations only.
+ */
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || ''
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+const supabaseServiceKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey
 
-export const supabaseAdmin = createClient(supabaseUrl, supabaseAnonKey)
+// Use service role key for admin operations
+export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+})
 
 // Types for the admin course management system
 export type CourseStatus = 'draft' | 'published' | 'archived'

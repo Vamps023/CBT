@@ -29,6 +29,7 @@ const AdminLayout: React.FC = () => {
     { name: 'Content', href: '/admin/course-content', icon: LayoutGrid },
     { name: 'Assessments', href: '/admin/assessments', icon: ClipboardList },
     { name: 'Enrollments', href: '/admin/enrollments', icon: Users },
+    { name: 'Import', href: '/admin/import', icon: ClipboardList },
   ]
 
   const handleSignOut = async () => {

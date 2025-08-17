@@ -31,16 +31,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setIsAdmin(false)
       return
     }
-    
+
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', user.id)
-        .single()
-      
+      const { data, error } = await supabase.rpc('get_user_role')
       if (error) throw error
-      setIsAdmin(data?.role === 'admin')
+      setIsAdmin(data === 'admin')
     } catch (error) {
       console.error('Error checking admin status:', error)
       setIsAdmin(false)
@@ -83,16 +78,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (error) throw error
       
       if (data.user) {
-        // Check if user has admin role in the users table
-        const { data: userData, error: roleError } = await supabase
-          .from('users')
-          .select('role')
-          .eq('id', data.user.id)
-          .single()
-          
+        // Verify admin role using RPC
+        const { data: roleData, error: roleError } = await supabase.rpc('get_user_role')
         if (roleError) throw roleError
-        
-        if (userData?.role !== 'admin') {
+
+        if (roleData !== 'admin') {
           await supabase.auth.signOut()
           throw new Error('Access denied. Admin privileges required.')
         }

@@ -75,8 +75,8 @@ const AdminCourseContent: React.FC = () => {
         .from('assessments')
         .select('id, title, module_id')
         .eq('module_id', selectedModuleId)
-        .single()
-      if (!assessmentError) setAssessment(assessmentData as Assessment)
+        .maybeSingle()
+      if (!assessmentError && assessmentData) setAssessment(assessmentData as Assessment)
       else setAssessment(null)
     }
     loadLessons()
