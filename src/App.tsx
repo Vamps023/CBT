@@ -18,6 +18,7 @@ import AdminAssessments from './pages/admin/AdminAssessments.tsx';
 import AdminEnrollments from './pages/admin/AdminEnrollments.tsx';
 import AdminCourseContent from './pages/admin/AdminCourseContent.tsx';
 import AdminCourses from './pages/admin/AdminCourses.tsx';
+import AdminCourseGraphEditor from './pages/admin/AdminCourseGraphEditor';
 
 function App() {
   return (
@@ -79,6 +80,7 @@ function App() {
                 <Route path="enrollments" element={<AdminEnrollments />} />
                 <Route path="course-content" element={<AdminCourseContent />} />
                 <Route path="assessments" element={<AdminAssessments />} />
+                <Route path="course-graph-editor" element={<AdminCourseGraphEditor />} />
               </Route>
             </Routes>
             

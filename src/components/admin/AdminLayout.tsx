@@ -11,7 +11,8 @@ import {
   Train,
   LayoutGrid,
   ClipboardList,
-  BookOpen
+  BookOpen,
+  Network
 } from 'lucide-react'
 
 const AdminLayout: React.FC = () => {
@@ -26,6 +27,7 @@ const AdminLayout: React.FC = () => {
   const navigation = [
     { name: 'Dashboard', href: '/admin', icon: BarChart3 },
     { name: 'Courses', href: '/admin/courses', icon: BookOpen },
+    { name: 'Graph Editor', href: '/admin/course-graph-editor', icon: Network },
     { name: 'Content', href: '/admin/course-content', icon: LayoutGrid },
     { name: 'Assessments', href: '/admin/assessments', icon: ClipboardList },
     { name: 'Enrollments', href: '/admin/enrollments', icon: Users },
