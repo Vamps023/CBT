@@ -69,6 +69,7 @@ export const EnhancedCourseGraphEditor: React.FC<EnhancedCourseGraphEditorProps>
     const id = selectedCourse?.id || courseId || 'default';
     return `graph_layout_${id}`;
   }, [selectedCourse?.id, courseId]);
+  const layoutStorageKeyFor = useCallback((id: string) => `graph_layout_${id}`, []);
 
   const saveLayout = useCallback(() => {
     try {
@@ -94,8 +95,7 @@ export const EnhancedCourseGraphEditor: React.FC<EnhancedCourseGraphEditorProps>
   }, [layoutStorageKey]);
 
   // Supabase layout persistence (global per-course)
-  const loadLayoutFromSupabase = useCallback(async (): Promise<Record<string, { x: number; y: number }> | null> => {
-    const cid = selectedCourse?.id || courseId;
+  const loadLayoutFromSupabase = useCallback(async (cid: string): Promise<Record<string, { x: number; y: number }> | null> => {
     if (!cid) return null;
     try {
       const { data, error } = await supabase
@@ -111,10 +111,10 @@ export const EnhancedCourseGraphEditor: React.FC<EnhancedCourseGraphEditorProps>
       console.warn('Failed to load layout from Supabase', e);
       return null;
     }
-  }, [selectedCourse?.id, courseId]);
+  }, []);
 
-  const saveLayoutToSupabase = useCallback(async () => {
-    const cid = selectedCourse?.id || courseId;
+  const saveLayoutToSupabase = useCallback(async (cidParam?: string) => {
+    const cid = cidParam || selectedCourse?.id || courseId;
     if (!cid) return;
     try {
       const posMap: Record<string, { x: number; y: number }> = {};
@@ -596,6 +596,9 @@ export const EnhancedCourseGraphEditor: React.FC<EnhancedCourseGraphEditorProps>
   // Load course graph with enhanced node data
   const loadCourseGraph = async (id: string) => {
     setIsLoading(true);
+    // Clear previous graph immediately to avoid visual carryover while loading new course
+    setNodes([]);
+    setEdges([]);
     try {
       // Fetch course data
       const { data: course, error: courseErr } = await supabase
@@ -783,15 +786,26 @@ export const EnhancedCourseGraphEditor: React.FC<EnhancedCourseGraphEditorProps>
       });
 
       // Try Supabase-stored layout first; fallback to localStorage
-      const sbPositions = await loadLayoutFromSupabase();
+      const sbPositions = await loadLayoutFromSupabase(id);
       let laidOut = graphNodes;
       if (sbPositions) {
         // cache in localStorage and apply
-        try { localStorage.setItem(layoutStorageKey(), JSON.stringify(sbPositions)); } catch {}
+        try { localStorage.setItem(layoutStorageKeyFor(id), JSON.stringify(sbPositions)); } catch {}
         laidOut = graphNodes.map(n => sbPositions[n.id] ? { ...n, position: sbPositions[n.id] } : n);
       } else {
         // Apply any saved positions from localStorage
-        laidOut = applySavedLayout(graphNodes);
+        // Use keyed cache for the specific course we are loading
+        try {
+          const raw = localStorage.getItem(layoutStorageKeyFor(id));
+          if (raw) {
+            const posMap = JSON.parse(raw) as Record<string, { x: number; y: number }>;
+            laidOut = graphNodes.map(n => posMap[n.id] ? { ...n, position: posMap[n.id] } : n);
+          } else {
+            laidOut = applySavedLayout(graphNodes);
+          }
+        } catch {
+          laidOut = applySavedLayout(graphNodes);
+        }
       }
       setNodes(laidOut);
       setEdges(graphEdges);
