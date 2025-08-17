@@ -1,25 +1,41 @@
-import React, { useRef, useState } from 'react'
+import React, { useRef, useState, useMemo, Suspense } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { OrbitControls, Box, Text, useGLTF } from '@react-three/drei'
+import { OrbitControls, Box, Text, useGLTF, Html } from '@react-three/drei'
 import { Play, Pause, RotateCcw, Settings, Zap, Maximize, Minimize } from 'lucide-react'
 import * as THREE from 'three'
+
+// Shared model URLs and preloads
+const TRAIN_URL = new URL('../assets/wooden_train_toy.glb', import.meta.url).href
+const CARRIAGE_URL = new URL('../assets/train_carriage.glb', import.meta.url).href
+useGLTF.preload(TRAIN_URL)
+useGLTF.preload(CARRIAGE_URL)
+
+// Reusable materials
+const HIGHLIGHT_MATERIAL = new THREE.MeshStandardMaterial({
+  color: '#fde047',
+  emissive: new THREE.Color('#eab308'),
+  emissiveIntensity: 0.3,
+})
+const FALLBACK_MATERIAL = new THREE.MeshStandardMaterial({ color: '#b0b8c1' })
 
 interface TrainProps {
   position: [number, number, number]
   isMoving: boolean
   speed: number  // Add speed prop
   brakeApplied: boolean  // Add brake prop
+  onPartClick?: (name: string) => void
+  highlightPart?: string
+  onHoverChange?: (name: string | null) => void
+  hoveredPart?: string | null
 }
 
-const Train: React.FC<TrainProps> = ({ position, isMoving, speed, brakeApplied }) => {
+const Train: React.FC<TrainProps> = ({ position, isMoving, speed, brakeApplied, onPartClick, highlightPart, onHoverChange, hoveredPart }) => {
   const meshRef = useRef<THREE.Group>(null!)
   // Load GLTF models from local assets to avoid expired signed URLs
-  const trainUrl = new URL('../assets/wooden_train_toy.glb', import.meta.url).href
-  const carriageUrl = new URL('../assets/train_carriage.glb', import.meta.url).href
-  const { nodes: trainNodes, materials: trainMaterials } = useGLTF(trainUrl) as any
-  const { nodes: carriageNodes, materials: carriageMaterials } = useGLTF(carriageUrl) as any
+  const { nodes: trainNodes, materials: trainMaterials } = useGLTF(TRAIN_URL) as any
+  const { nodes: carriageNodes, materials: carriageMaterials } = useGLTF(CARRIAGE_URL) as any
   
-  useFrame((state, delta) => {
+  useFrame((_, delta) => {
     if (meshRef.current && isMoving && !brakeApplied) {
       const movement = (speed / 120) * delta * 2
       meshRef.current.position.z += movement
@@ -28,6 +44,12 @@ const Train: React.FC<TrainProps> = ({ position, isMoving, speed, brakeApplied }
       }
     }
   })
+
+  // Resolve a safe material for carriage meshes
+  const carriageDefaultMaterial = useMemo(() => {
+    const values = carriageMaterials ? Object.values(carriageMaterials as any) : []
+    return (values && (values[0] as THREE.Material)) || FALLBACK_MATERIAL
+  }, [carriageMaterials])
 
   return (
     <group position={position} ref={meshRef}>
@@ -42,7 +64,19 @@ const Train: React.FC<TrainProps> = ({ position, isMoving, speed, brakeApplied }
       </group>
 
       {/* Carriage */}
-      <group position={[0, 0, -1]} rotation={[Math.PI / 2, 0, Math.PI / 2]}>
+      <group
+        position={[0, 0, -1]}
+        rotation={[Math.PI / 2, 0, Math.PI / 2]}
+        onPointerOver={(e) => {
+          document.body.style.cursor = 'pointer'
+          const name = (e.object as any)?.name as string | undefined
+          if (name && onHoverChange) onHoverChange(name)
+        }}
+        onPointerOut={() => {
+          document.body.style.cursor = 'auto'
+          onHoverChange && onHoverChange(null)
+        }}
+      >
         <group rotation={[-Math.PI, 0, 0]} scale={0.05}>
           {Object.entries(carriageNodes)
             .filter(([key]) => key.includes('UV'))
@@ -52,8 +86,15 @@ const Train: React.FC<TrainProps> = ({ position, isMoving, speed, brakeApplied }
                 castShadow
                 receiveShadow
                 geometry={node.geometry}
-                material={carriageMaterials[key.split('_')[1]]}
+                material={
+                  highlightPart === key || hoveredPart === key
+                    ? HIGHLIGHT_MATERIAL
+                    : (node.material as THREE.Material) || (carriageMaterials && (carriageMaterials as any)[key.split('_')[1]]) || carriageDefaultMaterial
+                }
                 position={[node.position[0], node.position[1], node.position[2]]}
+                onPointerDown={(e) => { e.stopPropagation(); onPartClick && onPartClick(key) }}
+                onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = 'pointer'; onHoverChange && onHoverChange(key) }}
+                onPointerOut={(e) => { e.stopPropagation(); document.body.style.cursor = 'auto'; onHoverChange && onHoverChange(null) }}
               />
             ))}
         </group>
@@ -121,7 +162,7 @@ interface TrainSimulationProps {
   courseId: string
 }
 
-const TrainSimulation: React.FC<TrainSimulationProps> = ({ courseId }) => {
+const TrainSimulation: React.FC<TrainSimulationProps> = ({ courseId: _courseId }) => {
   const [isRunning, setIsRunning] = useState(false)
   const [speed, setSpeed] = useState(50)
   const [power, setPower] = useState(75)
@@ -130,6 +171,34 @@ const TrainSimulation: React.FC<TrainSimulationProps> = ({ courseId }) => {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showControls, setShowControls] = useState(true)
   const viewportRef = useRef<HTMLDivElement>(null)
+
+  // Identification game state
+  const { nodes: carriageNodes } = useGLTF(CARRIAGE_URL) as any
+  const availableParts = useMemo(() => {
+    const allKeys = Object.keys(carriageNodes || {}).filter((k) => (carriageNodes as any)?.[k]?.geometry)
+    const uvKeys = allKeys.filter((k) => k.includes('UV'))
+    return uvKeys.length ? uvKeys : allKeys
+  }, [carriageNodes])
+  const defaultTargets = useMemo(() => availableParts.slice(0, 5), [availableParts])
+  const [targets] = useState<string[]>(defaultTargets)
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [score, setScore] = useState(0)
+  const [feedback, setFeedback] = useState<string | null>(null)
+  const [highlightPart, setHighlightPart] = useState<string | undefined>(undefined)
+  const [hoveredPart, setHoveredPart] = useState<string | null>(null)
+  const [showHint, setShowHint] = useState(false)
+
+  const currentTarget = targets[currentIndex]
+
+  // Normalize GLTF mesh names to make matching robust across loaders/exports
+  const normalizeName = (n?: string) =>
+    (n || '')
+      .replace(/\s+/g, '')
+      .replace(/Instance_?\d+$/i, '')
+      .replace(/[^A-Za-z0-9_]/g, '')
+      .toLowerCase()
+
+  const prettyName = (n?: string) => (n ? n.replace(/_/g, ' ') : '')
 
   const handleStart = () => {
     setIsRunning(!isRunning)
@@ -177,6 +246,28 @@ const TrainSimulation: React.FC<TrainSimulationProps> = ({ courseId }) => {
     } else {
       document.exitFullscreen()
       setIsFullscreen(false)
+    }
+  }
+
+  // Handle clicks on parts for identification
+  const handlePartClick = (name: string) => {
+    if (!currentTarget) return
+    const clickedN = normalizeName(name)
+    const targetN = normalizeName(currentTarget)
+    // Debug: surface names to the console for troubleshooting mismatches
+    // eslint-disable-next-line no-console
+    console.debug('[3D] click', { raw: name, normalized: clickedN, targetRaw: currentTarget, targetNormalized: targetN })
+
+    if (clickedN === targetN || clickedN.includes(targetN) || targetN.includes(clickedN)) {
+      setScore((s) => s + 1)
+      setFeedback('Correct! +1 point')
+      setHighlightPart(undefined)
+      setTimeout(() => setFeedback(null), 1000)
+      setCurrentIndex((i) => Math.min(i + 1, targets.length))
+    } else {
+      setFeedback('Not quite. Highlighting the correct part...')
+      setHighlightPart(currentTarget)
+      setTimeout(() => setFeedback(null), 1500)
     }
   }
 
@@ -279,41 +370,56 @@ const TrainSimulation: React.FC<TrainSimulationProps> = ({ courseId }) => {
             near: 0.1,
             far: 1000,
           }}
+          gl={{ antialias: true }}
+          dpr={[1, 2]}
+          onPointerMissed={() => setHoveredPart(null)}
         >
-          {/* Lighting */}
-          <ambientLight intensity={0.6} /> {/* Increased light intensity */}
-          <directionalLight position={[5, 10, 5]} intensity={1.2} />
-          
-          {/* Scene */}
-          <Railway />
-          <Train 
-            position={[0, 0.5, trainPosition[2]]} // Raised train position
-            isMoving={isRunning} 
-            speed={speed}
-            brakeApplied={brakeApplied}
-          />
-          <Station position={[0, 0, -10]} /> {/* Moved station closer */}
-          
-          {/* Ground */}
-          <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-            <planeGeometry args={[50, 50]} /> {/* Increased ground size */}
-            <meshStandardMaterial color="#22c55e" />
-          </mesh>
-          
-          <OrbitControls 
-            enablePan={true} 
-            enableZoom={true} 
-            enableRotate={true}
-            minPolarAngle={0.2} // Limit camera angles
-            maxPolarAngle={Math.PI / 2.1}
-          />
+          <Suspense fallback={null}>
+            {/* Lighting */}
+            <ambientLight intensity={0.6} /> {/* Increased light intensity */}
+            <directionalLight position={[5, 10, 5]} intensity={1.2} />
+            
+            {/* Scene */}
+            <Railway />
+            {/* Hover label */}
+            {hoveredPart && (
+              <Html center position={[0, 2.2, 0]}>
+                <div className="px-2 py-1 text-xs rounded bg-black/70 text-white">{hoveredPart}</div>
+              </Html>
+            )}
+            <Train 
+              position={[0, 0.5, trainPosition[2]]} // Raised train position
+              isMoving={isRunning} 
+              speed={speed}
+              brakeApplied={brakeApplied}
+              onPartClick={handlePartClick}
+              highlightPart={showHint ? currentTarget : highlightPart}
+              onHoverChange={setHoveredPart}
+              hoveredPart={hoveredPart}
+            />
+            <Station position={[0, 0, -10]} /> {/* Moved station closer */}
+            
+            {/* Ground */}
+            <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <planeGeometry args={[50, 50]} /> {/* Increased ground size */}
+              <meshStandardMaterial color="#22c55e" />
+            </mesh>
+            
+            <OrbitControls 
+              enablePan={true} 
+              enableZoom={true} 
+              enableRotate={true}
+              minPolarAngle={0.2} // Limit camera angles
+              maxPolarAngle={Math.PI / 2.1}
+            />
+          </Suspense>
         </Canvas>
       </div>
 
       {/* Regular control panel (only shown when not in fullscreen) */}
       {!isFullscreen && (
         <div className="p-6 bg-gray-50 border-t border-gray-200">
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid md:grid-cols-3 gap-6">
             {/* Controls */}
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Train Controls</h3>
@@ -433,6 +539,59 @@ const TrainSimulation: React.FC<TrainSimulationProps> = ({ courseId }) => {
                 </div>
               </div>
             </div>
+
+            {/* Identification Challenge */}
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Cabin Identification</h3>
+              {targets.length === 0 ? (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+                  No identifiable parts detected in model. Click parts to log names in console.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="p-3 bg-white rounded-lg border">
+                    <div className="text-sm text-gray-600">Find and click:</div>
+                    <div className="font-semibold text-gray-900 break-all">{prettyName(currentTarget) || 'Completed'}</div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-white rounded-lg border text-sm">
+                    <span className="text-gray-700">Score</span>
+                    <span className="font-semibold">{score} / {targets.length}</span>
+                  </div>
+                  {feedback && (
+                    <div className="p-2 text-sm rounded bg-blue-50 border border-blue-200 text-blue-800">
+                      {feedback}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => setShowHint((v) => !v)}
+                      className={`px-3 py-2 rounded text-sm ${showHint ? 'bg-yellow-500 text-white' : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'}`}
+                    >
+                      {showHint ? 'Hide Hint' : 'Reveal Target'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setCurrentIndex(0)
+                        setScore(0)
+                        setHighlightPart(undefined)
+                        setFeedback(null)
+                        setShowHint(false)
+                      }}
+                      className="px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 text-sm"
+                    >
+                      Restart
+                    </button>
+                    <button
+                      onClick={() => setCurrentIndex((i) => Math.min(i + 1, targets.length))}
+                      disabled={!currentTarget}
+                      className="px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 text-sm"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Instructions */}
@@ -441,7 +600,7 @@ const TrainSimulation: React.FC<TrainSimulationProps> = ({ courseId }) => {
             <p className="text-sm text-blue-800">
               Use the controls above to operate the train simulation. Adjust speed and power settings, 
               practice braking procedures, and observe how different controls affect train operation. 
-              Click and drag in the 3D view to change camera angle.
+              Click and drag in the 3D view to change camera angle. Click parts in the cabin to identify them.
             </p>
           </div>
         </div>

@@ -40,21 +40,21 @@ export async function getLessons(moduleId: UUID): Promise<Pick<Lesson, 'id' | 'm
   return data || []
 }
 
-export async function getAssessmentByLesson(lessonId: UUID): Promise<Pick<Assessment, 'id' | 'lesson_id' | 'title' | 'passing_score'> | null> {
+export async function getAssessmentByModule(moduleId: UUID): Promise<Pick<Assessment, 'id' | 'module_id' | 'title' | 'passing_score'> | null> {
   const { data, error } = await supabase
     .from('assessments')
-    .select('id, lesson_id, title, passing_score')
-    .eq('lesson_id', lessonId)
+    .select('id, module_id, title, passing_score')
+    .eq('module_id', moduleId)
     .maybeSingle()
   if (error) throw error
   return data || null
 }
 
-export async function createAssessment(lessonId: UUID, title = 'New Assessment'): Promise<Pick<Assessment, 'id' | 'lesson_id' | 'title' | 'passing_score'>> {
+export async function createAssessment(moduleId: UUID, title = 'New Assessment'): Promise<Pick<Assessment, 'id' | 'module_id' | 'title' | 'passing_score'>> {
   const { data, error } = await supabase
     .from('assessments')
-    .insert({ lesson_id: lessonId, title })
-    .select('id, lesson_id, title, passing_score')
+    .insert({ module_id: moduleId, title })
+    .select('id, module_id, title, passing_score')
     .single()
   if (error) throw error
   return data

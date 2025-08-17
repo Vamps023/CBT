@@ -24,13 +24,8 @@ const Courses: React.FC = () => {
             .from('enrollments')
             .select(`
               course:courses!enrollments_course_id_fkey (
-                id,
-                title,
-                description,
-                thumbnail_url,
-                duration_hours,
-                difficulty_level,
-                instructor_name
+                *,
+                instructor:instructor_id(full_name)
               )
             `)
             .eq('user_id', user.id)
@@ -44,7 +39,7 @@ const Courses: React.FC = () => {
             // Fallback: show published catalog so students can browse and enroll
             const { data: coursesData, error: coursesError } = await supabase
               .from('courses')
-              .select('*')
+              .select('*, instructor:instructor_id(full_name)')
               .eq('is_published', true)
               .order('created_at', { ascending: false })
             if (coursesError) throw coursesError
@@ -54,7 +49,7 @@ const Courses: React.FC = () => {
           // Guest: show published catalog
           const { data: coursesData, error: coursesError } = await supabase
             .from('courses')
-            .select('*')
+            .select('*, instructor:instructor_id(full_name)')
             .eq('is_published', true)
             .order('created_at', { ascending: false })
           if (coursesError) throw coursesError
@@ -178,7 +173,7 @@ const Courses: React.FC = () => {
 
                 <div className="flex items-center text-sm text-gray-500 mb-4">
                   <Users className="h-4 w-4 mr-1" />
-                  <span className="mr-4">{course.instructor_name}</span>
+                  <span className="mr-4">{(course as any).instructor?.full_name || 'Instructor'}</span>
                   <Clock className="h-4 w-4 mr-1" />
                   <span>{course.duration_hours}h</span>
                 </div>

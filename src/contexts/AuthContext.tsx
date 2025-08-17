@@ -94,7 +94,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = async () => {
     const { error } = await supabase.auth.signOut()
-    if (error) throw error
+    // Gracefully handle the case where the session is already missing.
+    if (error && error.name !== 'AuthSessionMissingError') {
+      throw error
+    }
   }
 
   const refreshProfile = async () => {

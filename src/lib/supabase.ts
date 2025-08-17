@@ -13,7 +13,7 @@ export type Course = {
   duration_hours: number
   difficulty_level: 'beginner' | 'intermediate' | 'advanced'
   instructor_id: string  // Reference to users.id
-  instructor_name?: string | null
+  instructor?: { full_name: string } | null // For joined queries
   is_published: boolean
   created_at: string
   updated_at: string

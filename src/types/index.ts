@@ -43,8 +43,10 @@ export interface Lesson {
   id: UUID
   module_id: UUID
   title: string
+  description?: string
   content?: string | null
   video_url?: string | null
+  youtube_url?: string | null
   duration_minutes?: number
   order: number
   type: LessonType
@@ -54,7 +56,7 @@ export interface Lesson {
 
 export interface Assessment {
   id: UUID
-  lesson_id: UUID
+  module_id: UUID
   title: string
   passing_score: number
   time_limit_seconds?: number | null

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
-import { BookOpen, Award, Clock, TrendingUp, Play, CheckCircle } from 'lucide-react'
+import { BookOpen, Award, Clock, Play, CheckCircle } from 'lucide-react'
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth()
@@ -209,64 +209,6 @@ const Dashboard: React.FC = () => {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Recent Activity */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h3>
-              <div className="space-y-3">
-                <div className="flex items-center space-x-3">
-                  <div className="bg-green-100 p-2 rounded-full">
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">Completed quiz</p>
-                    <p className="text-xs text-gray-500">Railway Safety Basics</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <div className="bg-blue-100 p-2 rounded-full">
-                    <Play className="h-4 w-4 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">Watched video</p>
-                    <p className="text-xs text-gray-500">Train Control Systems</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <div className="bg-purple-100 p-2 rounded-full">
-                    <Award className="h-4 w-4 text-purple-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">Earned certificate</p>
-                    <p className="text-xs text-gray-500">Operations Fundamentals</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Learning Goals */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Learning Goals</h3>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-700">Weekly Goal</span>
-                    <span className="text-sm text-gray-500">6/8 hours</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div className="bg-green-500 h-2 rounded-full" style={{ width: '75%' }}></div>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-700">Monthly Goal</span>
-                    <span className="text-sm text-gray-500">18/32 hours</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div className="bg-blue-500 h-2 rounded-full" style={{ width: '56%' }}></div>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>

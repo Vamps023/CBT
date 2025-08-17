@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { RotateCcw, Award } from 'lucide-react'
 import {
-  getAssessmentByLesson,
+  getAssessmentByModule,
   getQuestions,
   getOptionsForQuestions,
 } from '../services/supabase/assessments'
@@ -11,6 +11,7 @@ import {
 interface Option {
   id: string;
   text: string;
+  isCorrect?: boolean;
 }
 
 interface Question {
@@ -20,11 +21,10 @@ interface Question {
 }
 
 interface AssessmentProps {
-  courseId: string;
-  lessonId: string;
+  moduleId: string;
 }
 
-const Assessment: React.FC<AssessmentProps> = ({ courseId, lessonId }) => {
+const Assessment: React.FC<AssessmentProps> = ({ moduleId }) => {
   const { user } = useAuth();
   const [assessmentId, setAssessmentId] = useState<string | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -33,19 +33,23 @@ const Assessment: React.FC<AssessmentProps> = ({ courseId, lessonId }) => {
   const [showResults, setShowResults] = useState(false);
   const [results, setResults] = useState<{ score: number, passed: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [passingScore, setPassingScore] = useState<number>(80);
 
   useEffect(() => {
     const loadAssessment = async () => {
-      if (!lessonId) return;
+      if (!moduleId) return;
       try {
         setLoading(true);
-        const assessment = await getAssessmentByLesson(lessonId)
+        const assessment = await getAssessmentByModule(moduleId)
         if (!assessment) {
           setAssessmentId(null)
           setQuestions([])
           return
         }
         setAssessmentId(assessment.id)
+        if ((assessment as any).passing_score != null) {
+          setPassingScore((assessment as any).passing_score)
+        }
         const qs = await getQuestions(assessment.id)
         const ids = qs.map((q: any) => q.id)
         const opts = await getOptionsForQuestions(ids)
@@ -57,7 +61,7 @@ const Assessment: React.FC<AssessmentProps> = ({ courseId, lessonId }) => {
         const mapped = qs.map((q: any) => ({
           id: q.id,
           text: q.prompt,
-          options: (grouped[q.id] || []).map((o: any) => ({ id: o.id, text: o.option_text })),
+          options: (grouped[q.id] || []).map((o: any) => ({ id: o.id, text: o.option_text, isCorrect: o.is_correct })),
         }))
         setQuestions(mapped)
       } catch (err) {
@@ -67,7 +71,7 @@ const Assessment: React.FC<AssessmentProps> = ({ courseId, lessonId }) => {
       }
     };
     loadAssessment();
-  }, [lessonId]);
+  }, [moduleId]);
 
   const handleAnswerSelect = (questionId: string, optionId: string) => {
     setSelectedAnswers(prev => ({ ...prev, [questionId]: optionId }));
@@ -90,6 +94,22 @@ const Assessment: React.FC<AssessmentProps> = ({ courseId, lessonId }) => {
       setShowResults(true);
     } catch (err) {
       console.error('Error submitting assessment:', err);
+      // Fallback: compute score locally using fetched isCorrect flags
+      try {
+        const total = questions.length || 1;
+        let correct = 0;
+        for (const q of questions) {
+          const sel = selectedAnswers[q.id];
+          const opt = q.options.find(o => o.id === sel);
+          if (opt && opt.isCorrect) correct++;
+        }
+        const score = (correct / total) * 100;
+        const passed = score >= passingScore;
+        setResults({ score, passed });
+        setShowResults(true);
+      } catch (e) {
+        console.error('Local scoring failed:', e);
+      }
     }
   };
 

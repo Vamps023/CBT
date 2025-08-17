@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, Suspense } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase, Course } from '../lib/supabase'
+import type { Lesson } from '../types'
 import { useAuth } from '../contexts/AuthContext'
 import { Clock, Users, Play, FileText, Cuboid as Cube, CheckCircle, ArrowLeft } from 'lucide-react'
 import VideoPlayer from '../components/VideoPlayer'
@@ -14,7 +15,6 @@ const CourseDetail: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [enrolled, setEnrolled] = useState(false)
   const [modules, setModules] = useState<Array<{ id: string; title: string; order: number }>>([])
-  type Lesson = { id: string; title: string; duration_minutes: number; order: number; type: 'video' | 'assessment' | 'simulation' };
   const [lessonsByModule, setLessonsByModule] = useState<Record<string, Array<Lesson>>>({})
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null)
 
@@ -27,7 +27,7 @@ const CourseDetail: React.FC = () => {
         // 1) Fetch course
         const { data: courseRow, error: courseErr } = await supabase
           .from('courses')
-          .select('id, title, description, thumbnail_url, duration_hours, difficulty_level, instructor_id, instructor_name')
+          .select('*, instructor:instructor_id(full_name)')
           .eq('id', courseId)
           .single()
         if (courseErr) throw courseErr
@@ -68,25 +68,51 @@ const CourseDetail: React.FC = () => {
             .order('order', { ascending: true });
           if (lessonsErr) throw lessonsErr;
 
+          // Also fetch assessments for these modules
+          const { data: assessments, error: assessErr } = await supabase
+            .from('assessments')
+            .select('id, module_id, title, passing_score')
+            .in('module_id', moduleIds);
+          if (assessErr) throw assessErr;
+
           const grouped: Record<string, Array<Lesson>> = {};
           for (const l of lessons || []) {
             if (!grouped[l.module_id]) grouped[l.module_id] = [];
-            grouped[l.module_id].push({ 
-              id: l.id, 
-              title: l.title, 
-              duration_minutes: l.duration_minutes || 0, 
-              order: l.order, 
-              type: l.type 
-            });
+            grouped[l.module_id].push(l as Lesson);
           }
+
+          // Inject a synthetic simulation entry per module to expose 3D interaction
+          for (const m of normalizedModules) {
+            if (!grouped[m.id]) grouped[m.id] = []
+            grouped[m.id].push({
+              id: `simulation:${m.id}`,
+              module_id: m.id as any,
+              title: '3D Interaction',
+              duration_minutes: 0,
+              order: 9998,
+              type: 'simulation' as any,
+            } as Lesson)
+          }
+
+          // Inject one synthetic assessment entry per module that has an assessment
+          for (const a of assessments || []) {
+            if (!grouped[a.module_id]) grouped[a.module_id] = [];
+            grouped[a.module_id].push({
+              id: `assessment:${a.id}`,
+              module_id: a.module_id as any,
+              title: a.title || 'Assessment',
+              duration_minutes: 0,
+              order: 9999,
+              type: 'assessment' as any,
+            } as Lesson);
+          }
+
           setLessonsByModule(grouped);
 
-          // Set the first lesson as the selected one by default
-          if (lessons && lessons.length > 0) {
-            const firstModuleId = normalizedModules[0].id;
-            if (grouped[firstModuleId] && grouped[firstModuleId].length > 0) {
-              setSelectedLesson(grouped[firstModuleId][0]);
-            }
+          // Set the first item as selected by default
+          const firstModuleId = normalizedModules[0].id;
+          if (grouped[firstModuleId] && grouped[firstModuleId].length > 0) {
+            setSelectedLesson(grouped[firstModuleId][0]);
           }
         } else {
           setLessonsByModule({});
@@ -201,7 +227,7 @@ const CourseDetail: React.FC = () => {
                 <div className="flex items-center text-sm text-gray-500 mb-6 space-x-6">
                   <div className="flex items-center">
                     <Users className="h-4 w-4 mr-1" />
-                    <span>{(course as any).instructor_name || 'Instructor'}</span>
+                    <span>{(course as any).instructor?.full_name || 'Instructor'}</span>
                   </div>
                   <div className="flex items-center">
                     <Clock className="h-4 w-4 mr-1" />
@@ -218,8 +244,12 @@ const CourseDetail: React.FC = () => {
                       </div>
                     )}
                     {selectedLesson?.type === 'video' && <VideoPlayer courseId={course.id} lessonId={selectedLesson.id} />}
-                    {selectedLesson?.type === 'assessment' && <Assessment courseId={course.id} lessonId={selectedLesson.id} />}
-                    {selectedLesson?.type === 'simulation' && <TrainSimulation courseId={course.id} />}
+                    {selectedLesson?.type === 'assessment' && <Assessment moduleId={selectedLesson.module_id} />}
+                    {selectedLesson?.type === 'simulation' && (
+                      <Suspense fallback={<div className="h-64 flex items-center justify-center text-gray-600">Loading 3D...</div>}>
+                        <TrainSimulation courseId={course.id} />
+                      </Suspense>
+                    )}
                   </div>
                 ) : (
                   <div className="text-center py-8">

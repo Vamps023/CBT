@@ -4,12 +4,21 @@ import 'https://esm.sh/@supabase/functions-js/src/edge-runtime.d.ts'
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.55.0'
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
 serve(async (req) => {
-  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 })
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405, headers: corsHeaders })
   try {
     const body = await req.json()
     const { assessmentId, answers, userId } = body as { assessmentId: string; answers: Array<{ questionId: string; selectedOptionId: string }>; userId: string }
-    if (!assessmentId || !userId) return new Response(JSON.stringify({ error: 'assessmentId and userId required' }), { status: 400 })
+    if (!assessmentId || !userId) return new Response(JSON.stringify({ error: 'assessmentId and userId required' }), { status: 400, headers: corsHeaders })
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -20,7 +29,7 @@ serve(async (req) => {
       .from('assessment_options')
       .select('id, is_correct, question_id, question:question_id ( assessment_id )')
       .eq('question.assessment_id', assessmentId)
-    if (oerr) return new Response(JSON.stringify({ error: oerr.message }), { status: 500 })
+    if (oerr) return new Response(JSON.stringify({ error: oerr.message }), { status: 500, headers: corsHeaders })
 
     const correctByOption = new Map(options.map((o: any) => [o.id, !!o.is_correct]))
 
@@ -37,7 +46,7 @@ serve(async (req) => {
       .insert({ assessment_id: assessmentId, user_id: userId, attempt_number: attemptNumber, started_at: new Date().toISOString() })
       .select()
       .single()
-    if (aerr) return new Response(JSON.stringify({ error: aerr.message }), { status: 500 })
+    if (aerr) return new Response(JSON.stringify({ error: aerr.message }), { status: 500, headers: corsHeaders })
 
     let correct = 0
     const rows = answers.map((ans) => {
@@ -48,7 +57,7 @@ serve(async (req) => {
 
     if (rows.length) {
       const { error: insErr } = await supabase.from('assessment_answers').insert(rows)
-      if (insErr) return new Response(JSON.stringify({ error: insErr.message }), { status: 500 })
+      if (insErr) return new Response(JSON.stringify({ error: insErr.message }), { status: 500, headers: corsHeaders })
     }
 
     // Compute score
@@ -64,10 +73,10 @@ serve(async (req) => {
       .from('assessment_attempts')
       .update({ score, passed, submitted_at: new Date().toISOString() })
       .eq('id', attempt.id)
-    if (updErr) return new Response(JSON.stringify({ error: updErr.message }), { status: 500 })
+    if (updErr) return new Response(JSON.stringify({ error: updErr.message }), { status: 500, headers: corsHeaders })
 
-    return new Response(JSON.stringify({ attemptId: attempt.id, score, passed }), { status: 200 })
+    return new Response(JSON.stringify({ attemptId: attempt.id, score, passed }), { status: 200, headers: corsHeaders })
   } catch (e) {
-    return new Response(JSON.stringify({ error: String(e) }), { status: 500 })
+    return new Response(JSON.stringify({ error: String(e) }), { status: 500, headers: corsHeaders })
   }
 })

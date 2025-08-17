@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import YouTube from 'react-youtube'
 import { Play, Pause, Volume2, Maximize, SkipBack, SkipForward } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
@@ -8,15 +9,23 @@ interface VideoPlayerProps {
   lessonId: string;
 }
 
+const getYouTubeId = (url: string): string | null => {
+  if (!url) return null
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/
+  const match = url.match(regExp)
+  return (match && match[2].length === 11) ? match[2] : null
+}
+
 const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, lessonId }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const { user } = useAuth()
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
-  const [volume, setVolume] = useState(80)
+  const [volume, setVolume] = useState(0.8)
   const [videoTitle, setVideoTitle] = useState('')
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
+  const [youtubeUrl, setYoutubeUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   // Load lesson video and get a playable URL
@@ -26,9 +35,12 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, lessonId }) => {
 
       try {
         setLoading(true)
+        setVideoUrl(null)
+        setYoutubeUrl(null)
+
         const { data: lessonData, error: lessonError } = await supabase
           .from('lessons')
-          .select('id, title, video_url, duration_minutes')
+          .select('id, title, video_url, youtube_url, duration_minutes')
           .eq('id', lessonId)
           .single()
 
@@ -36,17 +48,20 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, lessonId }) => {
         
         setVideoTitle(lessonData.title)
 
-        if (lessonData.video_url.startsWith('http')) {
-          setVideoUrl(lessonData.video_url)
-        } else {
-          const { data, error } = await supabase.functions.invoke('getLessonAssetUrl', {
-            body: { lessonId: lessonData.id },
-          })
-          if (error) throw error
-          setVideoUrl(data.signedUrl)
+        if (lessonData.youtube_url) {
+          setYoutubeUrl(lessonData.youtube_url)
+        } else if (lessonData.video_url) {
+          if (lessonData.video_url.startsWith('http')) {
+            setVideoUrl(lessonData.video_url)
+          } else {
+            const { data, error } = await supabase.functions.invoke('getLessonAssetUrl', {
+              body: { lessonId: lessonData.id },
+            })
+            if (error) throw error
+            setVideoUrl(data.signedUrl)
+          }
         }
 
-        // If duration_minutes is present, estimate seconds until metadata loads
         if (lessonData.duration_minutes) setDuration(lessonData.duration_minutes * 60)
       } catch (error) {
         console.error('Failed to load video lesson:', error)
@@ -124,6 +139,15 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, lessonId }) => {
       <div className="relative aspect-video bg-black flex items-center justify-center">
         {loading ? (
           <div className="text-white">Loading video...</div>
+        ) : youtubeUrl ? (
+          <YouTube
+            videoId={getYouTubeId(youtubeUrl) || ''}
+            className="w-full h-full"
+            iframeClassName="w-full h-full"
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            onEnd={handleEnded}
+          />
         ) : videoUrl ? (
           <video
             ref={videoRef}
@@ -133,6 +157,11 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, lessonId }) => {
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
             onEnded={handleEnded}
+            onLoadedMetadata={() => {
+              if (videoRef.current) {
+                videoRef.current.volume = volume
+              }
+            }}
           />
         ) : (
           <div className="text-white">No video available</div>
@@ -174,7 +203,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, lessonId }) => {
             </button>
 
             <button
-              onClick={() => setIsPlaying(!isPlaying)}
+              onClick={() => {
+                if (!videoRef.current) return
+                if (videoRef.current.paused) {
+                  videoRef.current.play()
+                } else {
+                  videoRef.current.pause()
+                }
+              }}
               className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-full transition-colors"
             >
               {isPlaying ? (
@@ -190,23 +226,27 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ courseId, lessonId }) => {
             }}>
               <SkipForward className="h-5 w-5" />
             </button>
-
-            <div className="flex items-center space-x-2">
-              <Volume2 className="h-5 w-5 text-white" />
-              <div className="w-20 bg-gray-600 rounded-full h-2">
-                <div
-                  className="bg-white h-2 rounded-full"
-                  style={{ width: `${volume}%` }}
-                ></div>
-              </div>
-            </div>
           </div>
 
           <div className="flex items-center space-x-4">
-            <div className="text-white text-sm">
-              <span className="bg-gray-700 px-2 py-1 rounded">1.0x</span>
+            <div className="flex items-center space-x-2">
+              <Volume2 className="h-5 w-5 text-white" />
+              <input 
+                type="range" 
+                min="0" 
+                max="1" 
+                step="0.01" 
+                value={volume}
+                onChange={e => {
+                  const newVolume = parseFloat(e.target.value)
+                  setVolume(newVolume)
+                  if (videoRef.current) {
+                    videoRef.current.volume = newVolume
+                  }
+                }}
+                className="w-20 h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+              />
             </div>
-
             <button className="text-white hover:text-blue-400 transition-colors">
               <Maximize className="h-5 w-5" />
             </button>

@@ -5,7 +5,6 @@ import { toast } from 'react-hot-toast'
 import type {
   Course,
   CourseModule,
-  Lesson,
   Assessment as TAssessment,
   AssessmentQuestion,
   AssessmentOption,
@@ -14,8 +13,7 @@ import type {
 import {
   listCoursesForUser,
   getModules,
-  getLessons,
-  getAssessmentByLesson,
+  getAssessmentByModule,
   createAssessment,
   getQuestions,
   getOptionsForQuestions,
@@ -30,8 +28,6 @@ const AdminAssessments: React.FC = () => {
   const [selectedCourse, setSelectedCourse] = useState<UUID>('')
   const [modules, setModules] = useState<CourseModule[]>([])
   const [loadingModules, setLoadingModules] = useState(false)
-  const [lessons, setLessons] = useState<Lesson[]>([])
-  const [loadingLessons, setLoadingLessons] = useState(false)
   const [assessment, setAssessment] = useState<TAssessment | null>(null)
   const [questions, setQuestions] = useState<AssessmentQuestion[]>([])
   const [loadingQuestions, setLoadingQuestions] = useState(false)
@@ -42,13 +38,11 @@ const AdminAssessments: React.FC = () => {
 
   // Simple in-memory caches to avoid re-fetching (refs avoid extra re-renders)
   const modulesCacheRef = useRef<Record<UUID, CourseModule[]>>({})
-  const lessonsCacheRef = useRef<Record<UUID, Lesson[]>>({})
-  const assessmentCacheRef = useRef<Record<UUID, TAssessment>>({}) // key: lesson_id
+  const assessmentCacheRef = useRef<Record<UUID, TAssessment>>({}) // key: module_id
   const questionsCacheRef = useRef<Record<UUID, AssessmentQuestion[]>>({}) // key: assessment_id
 
   // Abort controllers to cancel stale requests
   const modulesAbortRef = useRef<AbortController | null>(null)
-  const lessonsAbortRef = useRef<AbortController | null>(null)
   const questionsAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
@@ -89,48 +83,27 @@ const AdminAssessments: React.FC = () => {
       } finally {
         setLoadingModules(false)
       }
-      setLessons([])
       setAssessment(null)
       setQuestions([])
     }
     loadMods()
   }, [selectedCourse])
 
-  const loadLessons = async (moduleId: string) => {
-    try {
-      // Cache first
-      if (lessonsCacheRef.current[moduleId]?.length) {
-        setLessons(lessonsCacheRef.current[moduleId])
-        return
-      }
-      // cancel any in-flight
-      lessonsAbortRef.current?.abort()
-      lessonsAbortRef.current = new AbortController()
-      setLoadingLessons(true)
-      const data = await getLessons(moduleId)
-      setLessons(data)
-      lessonsCacheRef.current[moduleId] = data
-    } catch (e: any) {
-      toast.error(e?.message || 'Failed to load lessons')
-    } finally {
-      setLoadingLessons(false)
-    }
-  }
 
-  const ensureAssessment = async (lessonId: string) => {
+  const ensureAssessment = async (moduleId: string) => {
     try {
       // Use cached assessment if present
-      const cached = assessmentCacheRef.current[lessonId]
-      const a = cached || (await getAssessmentByLesson(lessonId))
+      const cached = assessmentCacheRef.current[moduleId]
+      const a = cached || (await getAssessmentByModule(moduleId))
       if (a) {
         setAssessment(a)
-        if (!cached) assessmentCacheRef.current[lessonId] = a
+        if (!cached) assessmentCacheRef.current[moduleId] = a
         await loadQuestions(a.id)
         return
       }
-      const created = await createAssessment(lessonId, 'New Assessment')
+      const created = await createAssessment(moduleId, 'New Assessment')
       setAssessment(created)
-      assessmentCacheRef.current[lessonId] = created
+      assessmentCacheRef.current[moduleId] = created
       setQuestions([])
       setOptionsByQuestion({})
     } catch (e: any) {
@@ -261,28 +234,20 @@ const AdminAssessments: React.FC = () => {
           {loadingModules && <Loader2 className="animate-spin h-5 w-5 text-gray-500" />}
           <div className="space-y-2">
             {modules.map((m) => (
-              <button key={m.id} className="w-full text-left px-3 py-2 border rounded-md text-sm transition-colors border-gray-300 hover:bg-gray-50" onClick={() => loadLessons(m.id)}>{m.title}</button>
+              <div key={m.id} className="flex items-center justify-between p-2 border rounded-md bg-gray-50">
+                <span className="text-sm font-medium text-gray-800">{m.title}</span>
+                <button 
+                  className="text-xs px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                  onClick={() => ensureAssessment(m.id)}
+                >
+                  Edit Assessment
+                </button>
+              </div>
             ))}
           </div>
           {!loadingModules && selectedCourse && modules.length === 0 && <p className="text-sm text-gray-500">No modules found.</p>}
         </div>
 
-        {/* Lessons */}
-        <div className={`bg-white p-4 rounded-lg border ${lessons.length > 0 ? 'border-gray-200' : 'border-gray-200 bg-gray-50'}`}>
-          <h3 className={`text-lg font-medium mb-3 ${lessons.length > 0 ? 'text-gray-900' : 'text-gray-500'}`}>3. Select Lesson</h3>
-          {loadingLessons && <Loader2 className="animate-spin h-5 w-5 text-gray-500" />}
-          <div className="space-y-2">
-            {lessons.map((l) => (
-              <div key={l.id} className="border rounded-lg p-3 bg-gray-50 text-sm">
-                <div className="font-medium text-gray-800">{l.title} <span className="font-normal text-gray-500">({l.type})</span></div>
-                {l.type === 'assessment' && (
-                  <button className="text-xs mt-2 px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors" onClick={() => ensureAssessment(l.id)}>Edit Assessment</button>
-                )}
-              </div>
-            ))}
-          </div>
-          {!loadingLessons && modules.length > 0 && lessons.length === 0 && <p className="text-sm text-gray-500">Select a module.</p>}
-        </div>
       </div>
 
       {/* Assessment Editor */}

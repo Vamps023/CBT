@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "db:push": "supabase db push",
+    "migration:new": "supabase migration new"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.1",
@@ -20,6 +22,8 @@
     "react-hook-form": "^7.62.0",
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.7.1",
+    "react-youtube": "^10.1.0",
+    "three": "^0.179.1",
     "yup": "^1.7.0"
   },
   "devDependencies": {
