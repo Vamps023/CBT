@@ -13,9 +13,7 @@ const corsHeaders = {
 type Action = 'update' | 'delete' | 'bulkDelete' | 'bulkPublish' | 'togglePublish'
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405, headers: corsHeaders })
 
   try {
@@ -23,49 +21,42 @@ serve(async (req) => {
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
-    // Auth-aware client for reading the current user from the bearer token
+    // Auth-aware client for requester identity
     const authClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: req.headers.get('Authorization')! } },
     })
 
-    // Admin client for privileged writes (we will enforce our own checks)
+    // Admin client for privileged writes
     const adminClient = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Get the requesting user
+    // Get current user
     const { data: userData, error: userErr } = await authClient.auth.getUser()
     if (userErr || !userData?.user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
     }
     const requesterId = userData.user.id
 
-    // Helper: get requester role via RPC, which uses auth context (avoids table coupling and PGRST116)
+    // Get requester role (RPC defined in your DB)
     let requesterRole: 'admin' | 'instructor' | 'student' | null = null
     try {
-      const { data: roleData, error: roleErr } = await authClient.rpc('get_user_role')
-      if (!roleErr && roleData) {
-        requesterRole = roleData as typeof requesterRole
-      }
-    } catch (_) {
-      // ignore; default null
-    }
+      const { data: roleData } = await authClient.rpc('get_user_role')
+      if (roleData) requesterRole = roleData as typeof requesterRole
+    } catch (_) {}
 
     const body = await req.json()
     const action: Action = body?.action
     const payload = body?.payload || {}
-
     if (!action) return new Response(JSON.stringify({ error: 'action required' }), { status: 400, headers: corsHeaders })
 
-    // Helper: ensure permission for course ids
+    // Permission helper
     const ensureCanManageCourses = async (courseIds: string[]) => {
       if (requesterRole === 'admin') return { ok: true }
       if (!courseIds.length) return { ok: true }
-
       const { data, error } = await adminClient
         .from('courses')
         .select('id, instructor_id')
         .in('id', courseIds)
       if (error) return { ok: false, error: error.message }
-
       const unauthorized = (data || []).find((c: any) => c.instructor_id !== requesterId)
       if (unauthorized) return { ok: false, error: 'Forbidden: not instructor of all courses' }
       return { ok: true }
@@ -132,7 +123,6 @@ serve(async (req) => {
       const perm = await ensureCanManageCourses([courseId])
       if (!perm.ok) return new Response(JSON.stringify({ error: perm.error || 'Forbidden' }), { status: 403, headers: corsHeaders })
 
-      // Whitelist updatable fields
       const allowedFields = ['title', 'description', 'thumbnail_url', 'duration_hours', 'difficulty_level', 'is_published']
       const updateData: Record<string, any> = {}
       for (const k of allowedFields) if (k in data) updateData[k] = data[k]
