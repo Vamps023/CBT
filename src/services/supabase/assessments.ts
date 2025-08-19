@@ -7,7 +7,7 @@ import type {
   Assessment,
   AssessmentQuestion,
   AssessmentOption,
-} from '../../types'
+} from '../../types/index'
 
 export async function listCoursesForUser(userId: UUID, isAdmin: boolean): Promise<Pick<Course, 'id' | 'title' | 'instructor_id' | 'duration_hours' | 'difficulty_level'>[]> {
   let query = supabase
@@ -60,12 +60,12 @@ export async function createAssessment(moduleId: UUID, title = 'New Assessment')
   return data
 }
 
-export async function getQuestions(assessmentId: UUID): Promise<Pick<AssessmentQuestion, 'id' | 'assessment_id' | 'prompt' | 'order_index'>[]> {
+export async function getQuestions(assessmentId: UUID): Promise<Pick<AssessmentQuestion, 'id' | 'assessment_id' | 'question_text' | 'created_at'>[]> {
   const { data, error } = await supabase
     .from('assessment_questions')
-    .select('id, assessment_id, prompt, order_index')
+    .select('id, assessment_id, question_text, created_at')
     .eq('assessment_id', assessmentId)
-    .order('order_index', { ascending: true })
+    .order('created_at', { ascending: true })
   if (error) throw error
   return data || []
 }
@@ -80,11 +80,11 @@ export async function getOptionsForQuestions(questionIds: UUID[]): Promise<Pick<
   return data || []
 }
 
-export async function addQuestion(assessmentId: UUID, prompt: string, order_index: number): Promise<Pick<AssessmentQuestion, 'id' | 'assessment_id' | 'prompt' | 'order_index'>> {
+export async function addQuestion(assessmentId: UUID, question_text: string): Promise<Pick<AssessmentQuestion, 'id' | 'assessment_id' | 'question_text' | 'created_at'>> {
   const { data, error } = await supabase
     .from('assessment_questions')
-    .insert({ assessment_id: assessmentId, prompt, order_index })
-    .select('id, assessment_id, prompt, order_index')
+    .insert({ assessment_id: assessmentId, question_text })
+    .select('id, assessment_id, question_text, created_at')
   if (error) throw error
   return (data || [])[0]
 }

@@ -67,8 +67,7 @@ export interface Assessment {
 export interface AssessmentQuestion {
   id: UUID
   assessment_id: UUID
-  prompt: string
-  order_index: number
+  question_text: string
   created_at?: string
   updated_at?: string
 }

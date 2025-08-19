@@ -9,7 +9,7 @@ import type {
   AssessmentQuestion,
   AssessmentOption,
   UUID,
-} from '../../types'
+} from '../../types/index'
 import {
   listCoursesForUser,
   getModules,
@@ -151,10 +151,9 @@ const AdminAssessments: React.FC = () => {
 
   const addQuestion = async () => {
     if (!assessment || !newQuestion.trim()) return
-    const nextIndex = (questions[questions.length - 1]?.order_index || 0) + 1
     try {
-      const created = await svcAddQuestion(assessment.id, newQuestion.trim(), nextIndex)
-      setQuestions([...questions, created])
+      const created = await svcAddQuestion(assessment.id, newQuestion.trim())
+      setQuestions([...questions, created as any])
       setNewQuestion('')
       await loadOptions([created.id])
     } catch (e: any) {
@@ -280,7 +279,7 @@ const AdminAssessments: React.FC = () => {
             {loadingQuestions && <Loader2 className="animate-spin h-5 w-5 text-gray-500" />}
             {questions.map((q) => (
               <div key={q.id} className="border rounded-lg p-4 bg-gray-50">
-                <p className="font-medium text-gray-800 mb-3">{q.prompt}</p>
+                <p className="font-medium text-gray-800 mb-3">{q.question_text}</p>
                 
                 {/* Options List */}
                 <ul className="space-y-2 mb-3">
