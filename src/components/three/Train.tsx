@@ -40,27 +40,34 @@ export default function Train({ modelUrl = defaultTrainUrl as string, ...props }
     door_04: { progress: 0, target: 0 },
   })
 
+  // Helper to safely read nodes/materials (must exist before useMemo below)
+  const getNode = (key: string) => (nodes && (nodes as any)[key]) ? (nodes as any)[key] : undefined
+  const getMat = (key: string) => (materials && (materials as any)[key]) ? (materials as any)[key] : undefined
+
   // Highlight materials
   const hoverBodyMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#fde047', emissive: new THREE.Color('#eab308'), emissiveIntensity: 0.4 }), [])
   const hoverGlassMat = useMemo(() => new THREE.MeshPhysicalMaterial({ color: '#fef3c7', transmission: 0.7, roughness: 0.1, metalness: 0.0 }), [])
 
-  // Ensure door body uses a visible, double-sided PBR in current lighting
-  const doorBodyMat = useMemo(() => {
-    const base: THREE.Material | undefined = materials?.Body
-    const cloned = (base && (base as any).clone) ? (base as any).clone() as THREE.MeshStandardMaterial : new THREE.MeshStandardMaterial({ color: '#c9c9c9' })
-    cloned.side = THREE.DoubleSide
-    // Tame extremes that can look black with weak env
-    cloned.metalness = Math.min(0.3, cloned.metalness ?? 0.3)
-    cloned.roughness = Math.max(0.5, cloned.roughness ?? 0.5)
-    // Slightly boost env lighting influence
-    ;(cloned as any).envMapIntensity = 1.2
-    return cloned
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [materials])
+  // Helper to clone and normalize a material (double-sided, sane PBR)
+  const cloneDoorMat = (m?: THREE.Material) => {
+    const base = m as any
+    const cloned: any = base?.clone ? base.clone() : base ?? new THREE.MeshStandardMaterial({ color: '#c9c9c9' })
+    if (cloned) {
+      cloned.side = THREE.DoubleSide
+      if ('metalness' in cloned) cloned.metalness = Math.min(0.5, cloned.metalness ?? 0.3)
+      if ('roughness' in cloned) cloned.roughness = Math.max(0.4, cloned.roughness ?? 0.5)
+      cloned.envMapIntensity = cloned.envMapIntensity ?? 1.2
+    }
+    return cloned as THREE.Material
+  }
 
-  // Helper to safely read a node by key
-  const getNode = (key: string) => (nodes && nodes[key]) ? nodes[key] : undefined
-  const getMat = (key: string) => (materials && materials[key]) ? materials[key] : undefined
+  // Clone original GLB materials for each door to preserve textures
+  const door01Mat = useMemo(() => cloneDoorMat(getNode('door_01')?.material), [nodes])
+  const door02Mat = useMemo(() => cloneDoorMat(getNode('door_02')?.material), [nodes])
+  const door03Mat = useMemo(() => cloneDoorMat(getNode('door_03')?.material), [nodes])
+  const door04Mat = useMemo(() => cloneDoorMat(getNode('door_04')?.material), [nodes])
+
+  // (moved getNode/getMat above so hooks can reference them safely)
 
   // Animate door progress towards target every frame
   useFrame(() => {
@@ -101,12 +108,14 @@ export default function Train({ modelUrl = defaultTrainUrl as string, ...props }
         onPointerOut={(e) => { e.stopPropagation(); setHoveredDoor((prev) => (prev === 'door_01' ? null : prev)); document.body.style.cursor = 'auto' }}
         onClick={(e) => { e.stopPropagation(); toggleDoor('door_01') }}
       >
-        {getNode('door_01') && (
-          <mesh castShadow /* receiveShadow={false} */ geometry={getNode('door_01').geometry} material={hoveredDoor === 'door_01' ? hoverBodyMat : doorBodyMat} position={doorOffsets.door_01} />
-        )}
-        {getNode('door_01_1') && (
-          <mesh castShadow receiveShadow geometry={getNode('door_01_1').geometry} material={hoveredDoor === 'door_01' ? hoverGlassMat : getMat('Glass')} position={doorOffsets.door_01} />
-        )}
+        <group position={doorOffsets.door_01}>
+          {getNode('door_01') && (
+            <mesh castShadow /* receiveShadow={false} */ geometry={getNode('door_01').geometry} material={hoveredDoor === 'door_01' ? hoverBodyMat : door01Mat} />
+          )}
+          {getNode('door_01_1') && (
+            <mesh castShadow receiveShadow={false} geometry={getNode('door_01_1').geometry} material={hoveredDoor === 'door_01' ? hoverGlassMat : getMat('Glass')} />
+          )}
+        </group>
       </group>
       <group
         position={[36.101, 57.423, 151.74]}
@@ -114,12 +123,14 @@ export default function Train({ modelUrl = defaultTrainUrl as string, ...props }
         onPointerOut={(e) => { e.stopPropagation(); setHoveredDoor((prev) => (prev === 'door_02' ? null : prev)); document.body.style.cursor = 'auto' }}
         onClick={(e) => { e.stopPropagation(); toggleDoor('door_02') }}
       >
-        {getNode('door_02') && (
-          <mesh castShadow /* receiveShadow={false} */ geometry={getNode('door_02').geometry} material={hoveredDoor === 'door_02' ? hoverBodyMat : doorBodyMat} position={doorOffsets.door_02} />
-        )}
-        {getNode('door_02_1') && (
-          <mesh castShadow receiveShadow geometry={getNode('door_02_1').geometry} material={hoveredDoor === 'door_02' ? hoverGlassMat : getMat('Glass')} position={doorOffsets.door_02} />
-        )}
+        <group position={doorOffsets.door_02}>
+          {getNode('door_02') && (
+            <mesh castShadow /* receiveShadow={false} */ geometry={getNode('door_02').geometry} material={hoveredDoor === 'door_02' ? hoverBodyMat : door02Mat} />
+          )}
+          {getNode('door_02_1') && (
+            <mesh castShadow receiveShadow={false} geometry={getNode('door_02_1').geometry} material={hoveredDoor === 'door_02' ? hoverGlassMat : getMat('Glass')} />
+          )}
+        </group>
       </group>
       <group
         position={[-36.125, 57.423, 151.74]}
@@ -127,12 +138,14 @@ export default function Train({ modelUrl = defaultTrainUrl as string, ...props }
         onPointerOut={(e) => { e.stopPropagation(); setHoveredDoor((prev) => (prev === 'door_03' ? null : prev)); document.body.style.cursor = 'auto' }}
         onClick={(e) => { e.stopPropagation(); toggleDoor('door_03') }}
       >
-        {getNode('door_03') && (
-          <mesh castShadow /* receiveShadow={false} */ geometry={getNode('door_03').geometry} material={hoveredDoor === 'door_03' ? hoverBodyMat : doorBodyMat} position={doorOffsets.door_03} />
-        )}
-        {getNode('door_03_1') && (
-          <mesh castShadow receiveShadow geometry={getNode('door_03_1').geometry} material={hoveredDoor === 'door_03' ? hoverGlassMat : getMat('Glass')} position={doorOffsets.door_03} />
-        )}
+        <group position={doorOffsets.door_03}>
+          {getNode('door_03') && (
+            <mesh castShadow /* receiveShadow={false} */ geometry={getNode('door_03').geometry} material={hoveredDoor === 'door_03' ? hoverBodyMat : door03Mat} />
+          )}
+          {getNode('door_03_1') && (
+            <mesh castShadow receiveShadow={false} geometry={getNode('door_03_1').geometry} material={hoveredDoor === 'door_03' ? hoverGlassMat : getMat('Glass')} />
+          )}
+        </group>
       </group>
       <group
         position={[-36.135, 57.8, 133.12]}
@@ -140,12 +153,14 @@ export default function Train({ modelUrl = defaultTrainUrl as string, ...props }
         onPointerOut={(e) => { e.stopPropagation(); setHoveredDoor((prev) => (prev === 'door_04' ? null : prev)); document.body.style.cursor = 'auto' }}
         onClick={(e) => { e.stopPropagation(); toggleDoor('door_04') }}
       >
-        {getNode('door_04') && (
-          <mesh castShadow /* receiveShadow={false} */ geometry={getNode('door_04').geometry} material={hoveredDoor === 'door_04' ? hoverBodyMat : doorBodyMat} position={doorOffsets.door_04} />
-        )}
-        {getNode('door_04_1') && (
-          <mesh castShadow receiveShadow geometry={getNode('door_04_1').geometry} material={hoveredDoor === 'door_04' ? hoverGlassMat : getMat('Glass')} position={doorOffsets.door_04} />
-        )}
+        <group position={doorOffsets.door_04}>
+          {getNode('door_04') && (
+            <mesh castShadow /* receiveShadow={false} */ geometry={getNode('door_04').geometry} material={hoveredDoor === 'door_04' ? hoverBodyMat : door04Mat} />
+          )}
+          {getNode('door_04_1') && (
+            <mesh castShadow receiveShadow={false} geometry={getNode('door_04_1').geometry} material={hoveredDoor === 'door_04' ? hoverGlassMat : getMat('Glass')} />
+          )}
+        </group>
       </group>
 
       {/* Main body submeshes */}
